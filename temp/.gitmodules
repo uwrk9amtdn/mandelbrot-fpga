@@ -1,0 +1,3 @@
+[submodule "vgasim"]
+	path = vgasim
+	url = git@github.com:hdinc/vgasim

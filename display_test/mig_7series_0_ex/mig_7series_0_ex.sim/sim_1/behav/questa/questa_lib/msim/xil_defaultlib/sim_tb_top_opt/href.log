@@ -1,0 +1,32 @@
+BEGIN 1:xil_phy_control_mod0:fast:secureip
+    gwe :  1:SIP_PHY_CONTROL:fast:secureip
+    cfg_reset :  1:SIP_PHY_CONTROL:fast:secureip
+    ghigh_b :  1:SIP_PHY_CONTROL:fast:secureip
+    grestore :  1:SIP_PHY_CONTROL:fast:secureip
+END 
+BEGIN 1:xil_in_fifo_mod0:fast:secureip
+    gwe :  1:SIP_IN_FIFO:fast:secureip
+    ghigh_b :  1:SIP_IN_FIFO:fast:secureip
+END 
+BEGIN 1:xil_phaser_in_mod1:fast:secureip
+    freq_refclk_p :  1:xil_phaser_in_mod41:fast:secureip 1:xil_phaser_in_mod35:fast:secureip
+END 
+BEGIN 1:xil_phaser_in_mod0:fast:secureip
+    ghigh_b :  1:SIP_PHASER_IN:fast:secureip
+    grestore :  1:SIP_PHASER_IN:fast:secureip
+    gwe :  1:SIP_PHASER_IN:fast:secureip
+END 
+BEGIN 1:xil_phaser_out_mod0:fast:secureip
+    ghigh_b :  1:SIP_PHASER_OUT:fast:secureip
+    grestore :  1:SIP_PHASER_OUT:fast:secureip
+    gwe :  1:SIP_PHASER_OUT:fast:secureip
+END 
+BEGIN 1:glbl:fast:xil_defaultlib
+    PLL_LOCKG :  1:MMCME2_ADV:fast:unisims_ver 1:PLLE2_ADV:fast:unisims_ver
+    GTS :  1:IOBUF_INTERMDISABLE:fast:unisims_ver 1:OBUFDS:fast:unisims_ver 1:OBUF:fast:unisims_ver 1:OBUFT:fast:unisims_ver 1:IOBUFDS_DIFF_OUT_INTERMDISABLE:fast:unisims_ver
+    GSR :  1:OSERDESE2:fast:unisims_ver 1:OSERDESE2:fast__2:unisims_ver 1:IDDR:fast:unisims_ver 1:MMCME2_ADV:fast:unisims_ver 1:ODDR:fast:unisims_ver 1:ISERDESE2:fast:unisims_ver 1:OUT_FIFO:fast__1:unisims_ver 1:IN_FIFO:fast:unisims_ver 1:FDSE:fast:unisims_ver 1:OR2L:fast:unisims_ver 1:AND2B1L:fast:unisims_ver 1:XADC:fast:unisims_ver 1:PHY_CONTROL:fast:unisims_ver 1:FDRE:fast:unisims_ver 1:PHASER_OUT_PHY:fast:unisims_ver 1:IDELAYE2:fast:unisims_ver 1:PLLE2_ADV:fast:unisims_ver 1:PHASER_OUT_PHY:fast__1:unisims_ver 1:PHY_CONTROL:fast__1:unisims_ver 1:PHASER_IN_PHY:fast:unisims_ver 1:OSERDESE2:fast__1:unisims_ver 1:PHASER_REF:fast:unisims_ver 1:OUT_FIFO:fast:unisims_ver
+END 
+BEGIN 1:xil_out_fifo_mod0:fast:secureip
+    ghigh_b :  1:SIP_OUT_FIFO:fast:secureip
+    gwe :  1:SIP_OUT_FIFO:fast:secureip
+END 

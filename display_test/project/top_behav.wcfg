@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wave_config>
+   <wave_state>
+   </wave_state>
+   <db_ref_list>
+      <db_ref path="top_behav.wdb" id="1">
+         <top_modules>
+            <top_module name="glbl" />
+            <top_module name="top" />
+         </top_modules>
+      </db_ref>
+   </db_ref_list>
+   <zoom_setting>
+      <ZoomStartTime time="21,321.356555 ns"></ZoomStartTime>
+      <ZoomEndTime time="22,718.013171 ns"></ZoomEndTime>
+      <Cursor1Time time="24,598.278000 ns"></Cursor1Time>
+   </zoom_setting>
+   <column_width_setting>
+      <NameColumnWidth column_width="533"></NameColumnWidth>
+      <ValueColumnWidth column_width="259"></ValueColumnWidth>
+   </column_width_setting>
+   <WVObjectSize size="11" />
+   <wvobject fp_name="/top/display_test0/clk" type="logic">
+      <obj_property name="ElementShortName">clk</obj_property>
+      <obj_property name="ObjectShortName">clk</obj_property>
+   </wvobject>
+   <wvobject fp_name="/top/display_test0/pixel_clk" type="logic">
+      <obj_property name="ElementShortName">pixel_clk</obj_property>
+      <obj_property name="ObjectShortName">pixel_clk</obj_property>
+   </wvobject>
+   <wvobject fp_name="/top/display_test0/vsync" type="logic">
+      <obj_property name="ElementShortName">vsync</obj_property>
+      <obj_property name="ObjectShortName">vsync</obj_property>
+   </wvobject>
+   <wvobject fp_name="/top/display_test0/hsync" type="logic">
+      <obj_property name="ElementShortName">hsync</obj_property>
+      <obj_property name="ObjectShortName">hsync</obj_property>
+   </wvobject>
+   <wvobject fp_name="/top/display_test0/de" type="logic">
+      <obj_property name="ElementShortName">de</obj_property>
+      <obj_property name="ObjectShortName">de</obj_property>
+   </wvobject>
+   <wvobject fp_name="/top/display_test0/fb_reader0/addr_counter" type="array">
+      <obj_property name="ElementShortName">addr_counter[29:0]</obj_property>
+      <obj_property name="ObjectShortName">addr_counter[29:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/top/display_test0/fb_reader0/fifo_wr_en" type="logic">
+      <obj_property name="ElementShortName">fifo_wr_en</obj_property>
+      <obj_property name="ObjectShortName">fifo_wr_en</obj_property>
+   </wvobject>
+   <wvobject fp_name="/top/display_test0/fb_reader0/fifo_full" type="logic">
+      <obj_property name="ElementShortName">fifo_full</obj_property>
+      <obj_property name="ObjectShortName">fifo_full</obj_property>
+   </wvobject>
+   <wvobject fp_name="/top/display_test0/fb_reader0/fifo_empty" type="logic">
+      <obj_property name="ElementShortName">fifo_empty</obj_property>
+      <obj_property name="ObjectShortName">fifo_empty</obj_property>
+   </wvobject>
+   <wvobject fp_name="/top/display_test0/fb_reader0/state" type="array">
+      <obj_property name="ElementShortName">state[31:0]</obj_property>
+      <obj_property name="ObjectShortName">state[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="group108" type="group">
+      <obj_property name="label">adv7811_setup</obj_property>
+      <obj_property name="DisplayName">label</obj_property>
+      <obj_property name="isExpanded"></obj_property>
+      <wvobject fp_name="/top/display_test0/ac701_adv7811_setup_i0/error" type="logic">
+         <obj_property name="ElementShortName">error</obj_property>
+         <obj_property name="ObjectShortName">error</obj_property>
+      </wvobject>
+      <wvobject fp_name="/top/display_test0/ac701_adv7811_setup_i0/done" type="logic">
+         <obj_property name="ElementShortName">done</obj_property>
+         <obj_property name="ObjectShortName">done</obj_property>
+      </wvobject>
+      <wvobject fp_name="/top/display_test0/ac701_adv7811_setup_i0/pc" type="array">
+         <obj_property name="ElementShortName">pc[15:0]</obj_property>
+         <obj_property name="ObjectShortName">pc[15:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/top/display_test0/ac701_adv7811_setup_i0/time_counter" type="array">
+         <obj_property name="ElementShortName">time_counter[31:0]</obj_property>
+         <obj_property name="ObjectShortName">time_counter[31:0]</obj_property>
+      </wvobject>
+   </wvobject>
+</wave_config>

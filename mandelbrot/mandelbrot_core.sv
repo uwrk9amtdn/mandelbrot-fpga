@@ -23,7 +23,6 @@ module mandelbrot_core #(
     // zx = zx * zx - zy * zy + cx
     // zy = 2 * zx * zy + cy;
 
-
     always_ff @(posedge clk) begin
         case (state);
             IDLE: begin

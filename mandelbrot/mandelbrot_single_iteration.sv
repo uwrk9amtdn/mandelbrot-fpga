@@ -4,7 +4,6 @@ module mandelbrot_single_iteration #(
     ADD_SUB_LATENCY = 2
 )(
     input clk,
-    input rst,
 
     input  signed [2:-FRAC_BITS] s_a,
     input  signed [2:-FRAC_BITS] s_b,
@@ -12,20 +11,15 @@ module mandelbrot_single_iteration #(
     input  signed [2:-FRAC_BITS] s_b2,
     input  signed [2:-FRAC_BITS] s_c,
     input  signed [2:-FRAC_BITS] s_d,
-    input                        s_valid,
 
     output signed [2:-FRAC_BITS] m_a,
     output signed [2:-FRAC_BITS] m_b,
     output signed [2:-FRAC_BITS] m_a2,
     output signed [2:-FRAC_BITS] m_b2,
-    output                       m_stop,
-    output                       m_valid
+    output                       m_stop
 );
 
     localparam TOTAL_LATENCY = MUL_LATENCY + ADD_SUB_LATENCY;
-
-    logic [TOTAL_LATENCY-1:0] valid_reg;
-    assign m_valid = valid_reg[TOTAL_LATENCY - 1];
 
     logic signed [5:-FRAC_BITS] a_mul_a;
     logic signed [5:-FRAC_BITS] b_mul_b;
@@ -45,16 +39,8 @@ module mandelbrot_single_iteration #(
 
 
     always @(posedge clk) begin
-
         a2_minus_b2 <= a2 - b2;
         a2_minus_b2_plus_c <= a2_minus_b2 + c;
-
-        valid_reg <= {valid_reg[TOTAL_LATENCY-2:0], s_valid};
-
-        if (rst) begin
-            valid_reg <= 0;
-        end
-
     end
 
 endmodule

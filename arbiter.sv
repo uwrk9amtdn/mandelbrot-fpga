@@ -1,9 +1,3 @@
-interface axis_intf #(DATA_WIDTH = 32);
-    logic ready;
-    logic valid;
-    logic [DATA_WIDTH-1:0] data;
-endinterface
-
 module axis_sequence_arbiter #(
     DATA_WIDTH   = 32,
     MASTER_COUNT = 4
@@ -13,6 +7,8 @@ module axis_sequence_arbiter #(
     axis_intf m[MASTER_COUNT],
     axis_intf s
 );
+
+
 
     logic [$clog2(MASTER_COUNT)-1:0] index;
 

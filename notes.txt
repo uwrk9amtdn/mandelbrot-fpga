@@ -1,0 +1,6 @@
+reorder buffer
+cache
+
+axi register slice
+axi backpressure
+deep pipelines ready combinational

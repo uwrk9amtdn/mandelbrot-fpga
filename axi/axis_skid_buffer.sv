@@ -1,4 +1,4 @@
-module skid_buffer(
+module axis_skid_buffer(
     input clk, rst,
     axis_intf s,
     axis_intf m

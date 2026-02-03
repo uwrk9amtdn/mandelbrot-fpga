@@ -5,6 +5,7 @@ module skid_buffer(
 );
 
     type(s.data) skid_data;
+    logic        skid_last;
     logic        skid_valid;
 
     always_ff @(posedge clk) begin
@@ -16,15 +17,18 @@ module skid_buffer(
                 skid_valid <= 0;
                 m.valid    <= 1;
                 m.data     <= skid_data;
+                m.last     <= skid_last;
             end else begin
                 m.valid <= s.valid;
                 m.data  <= s.data;
+                m.last  <= s.last;
             end
         end
 
         if (s.ready & s.valid & ~m.ready & m.valid) begin
             skid_valid <= 1;
             skid_data  <= s.data;
+            skid_last  <= s.last;
         end
 
         if (rst) begin

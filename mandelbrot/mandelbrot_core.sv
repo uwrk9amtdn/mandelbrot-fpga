@@ -56,7 +56,7 @@ module mandelbrot_core #(
     (* ram_style = "distributed" *) logic                 done_mem [N-1:0];
     (* ram_style = "distributed" *) logic [15:0]          iter_mem [N-1:0];
 
-    typedef enum {LOAD, INIT, CALC, UNLOAD} state_t;
+    typedef enum {LOAD, CALC, UNLOAD} state_t;
     state_t state;
 
     localparam PTR_WIDTH = N > 1 ? $clog2(N) : 1;
@@ -64,10 +64,10 @@ module mandelbrot_core #(
     logic [PTR_WIDTH:0]   active_cnt;
     logic [15:0]          iter_cnt;
 
-    assign msi_s_a  = state == INIT ? 0 : msi_m_a;
-    assign msi_s_b  = state == INIT ? 0 : msi_m_b;
-    assign msi_s_a2 = state == INIT ? 0 : msi_m_a2;
-    assign msi_s_b2 = state == INIT ? 0 : msi_m_b2;
+    assign msi_s_a  = state == LOAD ? 0 : msi_m_a;
+    assign msi_s_b  = state == LOAD ? 0 : msi_m_b;
+    assign msi_s_a2 = state == LOAD ? 0 : msi_m_a2;
+    assign msi_s_b2 = state == LOAD ? 0 : msi_m_b2;
     assign msi_s_c  = x_mem[ptr];
     assign msi_s_d  = y_mem[ptr];
 
@@ -80,28 +80,20 @@ module mandelbrot_core #(
 
         case (state)
             LOAD: begin
+                iter_cnt      <= 1;
+                active_cnt    <= N;
+                done_mem[ptr] <= 0;
+
                 if (s_valid) begin
                     x_mem   [ptr] <= s_x;
                     y_mem   [ptr] <= s_y;
 
                     if (ptr == N - 1) begin
                         ptr        <= 0;
-                        state      <= INIT;
+                        state      <= CALC;
                     end else begin
                         ptr <= ptr + 1;
                     end
-                end
-            end
-
-            INIT: begin
-                done_mem[ptr] <= 0;
-                if (ptr == N - 1) begin
-                    ptr           <= 0;
-                    iter_cnt      <= 1;
-                    active_cnt    <= N;
-                    state         <= CALC;
-                end else begin
-                    ptr <= ptr + 1;
                 end
             end
 

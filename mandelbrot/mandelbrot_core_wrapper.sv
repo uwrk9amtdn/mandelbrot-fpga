@@ -1,26 +1,29 @@
 // addr[31:16] -> addr[15:0] -> data 0 -> data 1 -> data 2 -> ... -> data N
 module mandelbrot_core_wrapper #(
-    logic [31:0] START_ADDR,
-    int          X_COUNT,
-    int          Y_COUNT,
-    int          PIXELS_PER_PACKET,
-    int          FRAC_WIDTH = 8
+    logic [31:0] START_ADDR        = 0,
+    int          X_COUNT           = 1920,
+    int          Y_COUNT           = 1,
+    int          PIXELS_PER_PACKET = 16,
+    int          FRAC_WIDTH        = 8
 )(
-    input clk,
-    input rst,
+    input  logic                 clk,
+    input  logic                 rst,
 
+    output logic                 s_ready,
+    input  logic                 s_valid,
+    input  logic [2:-FRAC_WIDTH] s_x,
+    input  logic [2:-FRAC_WIDTH] s_y,
 
+    input  logic [2:-FRAC_WIDTH] s_d,
+    input  logic [15:0]          s_max_it,
 
-    input [15:0] max_it,
-
-    output s_ready,
-    input  s_valid,
-    input [2:-FRAC_WIDTH] distance,
-    input [2:-FRAC_WIDTH]
-
-    output axis_intf m
+    axis_intf m
 
 );
+
+    logic                 core_s_ready;
+    logic [2:-FRAC_WIDTH] core_s_x;
+    logic [2:-FRAC_WIDTH] core_s_y;
 
     mandelbrot_core #(
         .FRAC_WIDTH (),
@@ -28,7 +31,7 @@ module mandelbrot_core_wrapper #(
         .clk        (clk),
         .rst        (rst),
 
-        .max_it     (max_it),
+        .max_it     (core_max_it),
 
         .s_ready    (),
         .s_valid    (),
@@ -50,6 +53,7 @@ module mandelbrot_core_wrapper #(
     always_ff @(posedge clk) begin
 
         if (s_ready | ~s_valid) begin
+
             if (x_ctr == X_COUNT - 1) begin
                 if (y_ctr == Y_COUNT - 1) begin
                 end else begin

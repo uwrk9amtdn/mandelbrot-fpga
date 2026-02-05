@@ -1,5 +1,5 @@
 module mandelbrot_wrapper #(
-    FRAC_WIDTH = 8
+    int FRAC_WIDTH = 8
 )(
     input clk,
     input rst,
@@ -19,22 +19,20 @@ module mandelbrot_wrapper #(
 
     localparam logic [31:0] FRAMEBUFFER_START_ADDR = 0;
 
-    axis_intf #(16) root_arbiter_master ();
+    axis_intf #(16) arbiter_tree_master ();
 
     axis_width_converter wc(clk, rst, );
 
-    generate
-        for (genvar i = 0; i < N; i++) begin : core_gen
 
-            mandelbrot_core_wrapper core #()();
+    axis_intf #(16) core_master [NUMBER_OF_CORES] ();
 
-        end
-        for (genvar i = 0; i < N / 4; i++) begin
+    axis_rr_arbiter_tree #(NUMBER_OF_CORES, ARBITER_SLAVE_COUNT) arbiter_tree (clk, rst, core_master, arbiter_tree_master)
 
-            axis_rr_arbiter #(4) arbiter (clk, rst, );
-            axis_skid_buffer sb (clk, rst, )
-        end
-    endgenerate
+    for (genvar i = 0; i < N; i++) begin
+
+        mandelbrot_core_wrapper core #()();
+
+    end
 
     always @(posedge clk) begin
 

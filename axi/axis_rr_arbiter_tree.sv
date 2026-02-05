@@ -1,4 +1,4 @@
-module arbiter_tree #(
+module axis_rr_arbiter_tree #(
     int SLAVE_COUNT  = 5,
     int ARBITER_SIZE = 2
 )(

@@ -43,8 +43,10 @@ interface axi_intf #(ID_WIDTH = 1, ADDR_WIDTH = 32, DATA_WIDTH = 32);
 endinterface
 
 interface axis_intf #(DATA_WIDTH = 32);
+    localparam KEEP_WIDTH = (DATA_WIDTH + 7) / 8;
     logic                  ready;
     logic                  valid;
     logic [DATA_WIDTH-1:0] data;
     logic                  last;
+    logic [KEEP_WIDTH-1:0] keep;
 endinterface

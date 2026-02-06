@@ -1,3 +1,6 @@
 [submodule "third_party/UberDDR3"]
 	path = third_party/UberDDR3
 	url = https://github.com/AngeloJacobo/UberDDR3
+[submodule "third_party/wb2axip"]
+	path = third_party/wb2axip
+	url = https://github.com/ZipCPU/wb2axip

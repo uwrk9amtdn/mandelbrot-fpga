@@ -1,0 +1,3 @@
+[submodule "third_party/UberDDR3"]
+	path = third_party/UberDDR3
+	url = https://github.com/AngeloJacobo/UberDDR3

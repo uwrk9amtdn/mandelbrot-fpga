@@ -1,8 +1,8 @@
 // addr[31:16] -> addr[15:0] -> data 0 -> data 1 -> data 2 -> ... -> data N
 module mandelbrot_core_wrapper #(
     logic [31:0] START_ADDR        = 0,
-    int          X_COUNT           = 1920,
-    int          Y_COUNT           = 1,
+    int          RES_X             = 1920,
+    int          RES_Y             = 1,
     int          PIXELS_PER_PACKET = 16,
     int          FRAC_WIDTH        = 8
 )(
@@ -49,13 +49,15 @@ module mandelbrot_core_wrapper #(
     logic [] x_ctr;
     logic [] y_ctr;
 
+    typedef enum {} state_t;
+    state_t state;
 
     always_ff @(posedge clk) begin
 
         if (s_ready | ~s_valid) begin
 
-            if (x_ctr == X_COUNT - 1) begin
-                if (y_ctr == Y_COUNT - 1) begin
+            if (x_ctr == RES_X - 1) begin
+                if (y_ctr == RES_Y - 1) begin
                 end else begin
 
                 end

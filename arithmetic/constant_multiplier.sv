@@ -1,23 +1,24 @@
 module constant_multiplier #(
-    int                      DATA_WIDTH     = 8,
-    int                      CONSTANT_WIDTH = 10,
-    bit                      SIGNED         = 0,
+    int                      INPUT_WIDTH    = 8,
+    int                      CONSTANT_WIDTH = 11,
+    int                      OUTPUT_WIDTH   = INPUT_WIDTH + CONSTANT_WIDTH,
+    bit                      SIGNED         = 1,
     bit [CONSTANT_WIDTH-1:0] CONSTANT       = 960,
     int                      LATENCY        = 1
 )(
-    input  logic                                 clk,
-    input  logic                                 rst,
+    input  logic                    clk,
+    input  logic                    rst,
 
-    input  logic                                 s_valid,
-    input  logic [DATA_WIDTH-1:0]                s_data,
+    input  logic                    s_valid,
+    input  logic [INPUT_WIDTH-1:0]  s_data,
 
-    output logic                                 m_valid,
-    output logic [DATA_WIDTH+CONSTANT_WIDTH-1:0] m_data
+    output logic                    m_valid,
+    output logic [OUTPUT_WIDTH-1:0] m_data
 );
 
 
-    logic [DATA_WIDTH+CONSTANT_WIDTH-1:0] d [LATENCY+1];
-    logic                                 v [LATENCY+1];
+    logic [OUTPUT_WIDTH-1:0] d [LATENCY+1];
+    logic                    v [LATENCY+1];
 
     if (SIGNED) begin
         assign d[0] = $signed(s_data) * $signed(CONSTANT);

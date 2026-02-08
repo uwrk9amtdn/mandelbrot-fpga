@@ -2,21 +2,7 @@ module mig_wrapper (
     input           sys_clk,
     input           sys_rst,
 
-    inout  [63:0]   ddr3_dq,
-    inout  [7:0]    ddr3_dqs_n,
-    inout  [7:0]    ddr3_dqs_p,
-    output [13:0]   ddr3_addr,
-    output [2:0]    ddr3_ba,
-    output          ddr3_ras_n,
-    output          ddr3_cas_n,
-    output          ddr3_we_n,
-    output          ddr3_reset_n,
-    output          ddr3_ck_p,
-    output          ddr3_ck_n,
-    output          ddr3_cke,
-    output [0:0]    ddr3_cs_n,
-    output [7:0]    ddr3_dm,
-    output [0:0]    ddr3_odt,
+    ddr3_intf       ddr3,
 
     output          init_calib_complete,
 
@@ -25,6 +11,19 @@ module mig_wrapper (
     axi.slave       s_axi
 );
 
+    generate
+        if (
+            ddr3.DM_BITS  != 8  ||
+            ddr3.BA_BITS  != 3  ||
+            ddr3.ROW_BITS != 14 ||
+            ddr3.DQ_BITS  != 64 ||
+            ddr3.DQS_BITS != 8
+        ) begin
+            $error();
+        end
+        // TODO: COL_BITS
+    endgenerate
+
     wire ui_clk;
     wire ui_clk_sync_rst;
 
@@ -32,21 +31,21 @@ module mig_wrapper (
     assign s_axi_rst = ui_clk_sync_rst;
 
     mig_7series_0 u_mig_7series_0 (
-        .ddr3_dq                        (ddr3_dq),
-        .ddr3_dqs_n                     (ddr3_dqs_n),
-        .ddr3_dqs_p                     (ddr3_dqs_p),
-        .ddr3_addr                      (ddr3_addr),
-        .ddr3_ba                        (ddr3_ba),
-        .ddr3_ras_n                     (ddr3_ras_n),
-        .ddr3_cas_n                     (ddr3_cas_n),
-        .ddr3_we_n                      (ddr3_we_n),
-        .ddr3_reset_n                   (ddr3_reset_n),
-        .ddr3_ck_p                      (ddr3_ck_p),
-        .ddr3_ck_n                      (ddr3_ck_n),
-        .ddr3_cke                       (ddr3_cke),
-        .ddr3_cs_n                      (ddr3_cs_n),
-        .ddr3_dm                        (ddr3_dm),
-        .ddr3_odt                       (ddr3_odt),
+        .ddr3_dq                        (ddr3.dq),
+        .ddr3_dqs_n                     (ddr3.dqs_n),
+        .ddr3_dqs_p                     (ddr3.dqs),
+        .ddr3_addr                      (ddr3.addr),
+        .ddr3_ba                        (ddr3.ba),
+        .ddr3_ras_n                     (ddr3.ras_n),
+        .ddr3_cas_n                     (ddr3.cas_n),
+        .ddr3_we_n                      (ddr3.we_n),
+        .ddr3_reset_n                   (ddr3.rst_n),
+        .ddr3_ck_p                      (ddr3.ck),
+        .ddr3_ck_n                      (ddr3.ck_n),
+        .ddr3_cke                       (ddr3.cke),
+        .ddr3_cs_n                      (ddr3.cs_n),
+        .ddr3_dm                        (ddr3.dm),
+        .ddr3_odt                       (ddr3.odt),
 
         .ui_clk                         (ui_clk),
         .ui_clk_sync_rst                (ui_clk_sync_rst),

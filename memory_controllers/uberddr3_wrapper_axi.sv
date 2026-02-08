@@ -1,4 +1,4 @@
-module uberddr3_wrapper #(
+module uberddr3_wrapper_axi #(
     CLK_PERIOD_PS      = 12_000,
     DDR3_CLK_PERIOD_PS = 3_000
 )(

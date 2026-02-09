@@ -1,4 +1,4 @@
-module mandelbrot_wrapper #(
+module wrapper #(
     int          FRAC_WIDTH    = 8,
     int          NCORES        = 64,
     int          ARBITER_SIZE  = 4,
@@ -117,7 +117,7 @@ module mandelbrot_wrapper #(
 
     for (genvar i = 0; i < N; i++) begin
 
-        mandelbrot_core_wrapper core #(
+        core_wrapper core #(
             .START_ADDR        (),
             .X_COUNT           (),
             .Y_COUNT           (),
@@ -137,7 +137,7 @@ module mandelbrot_wrapper #(
 
     end
 
-    mandelbrot_memory_writer #(
+    memory_writer #(
         .BURST_SIZE (BURST_SIZE),
         .AXI_ID     (AXI_ID)
     ) memw (

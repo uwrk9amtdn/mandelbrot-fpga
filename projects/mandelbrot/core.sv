@@ -1,4 +1,4 @@
-module mandelbrot_core #(
+module core #(
     FRAC_WIDTH = 8
 )(
     input  logic                 clk,
@@ -29,7 +29,7 @@ module mandelbrot_core #(
     logic [2:-FRAC_WIDTH] msi_m_b2;
     logic                 msi_m_stop;
 
-    mandelbrot_single_iteration #(
+    single_iteration #(
         .FRAC_WIDTH (FRAC_WIDTH)
     ) msi (
         .clk    (clk),

@@ -1,10 +1,10 @@
-module mandelbrot_top (
+module top (
     input clk_p,
     input clk_n,
 
     logic                ddr3_rst_n;
     logic                ddr3_ck;
-	logic                ddr3_ck_n;
+    logic                ddr3_ck_n;
     logic                ddr3_cke;
     logic                ddr3_cs_n;
     logic                ddr3_ras_n;
@@ -20,12 +20,12 @@ module mandelbrot_top (
 );
 
 
-    mandelbrot_wrapper #(
+    wrapper #(
         .FRAC_WIDTH    (8),
         .NCORES        (64),
         .ARBITER_SIZE  (4),
         .FB_START_ADDR (0)
-    ) mandelbrot_wrapper0 (
+    ) wrapper0 (
         .clk              (),
         .rst              (),
 

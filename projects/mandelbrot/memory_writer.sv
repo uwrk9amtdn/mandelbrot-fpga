@@ -1,4 +1,4 @@
-module mandelbrot_memory_writer #(
+module memory_writer #(
     int BURST_SIZE = 16,
     int AXI_ID     = 1
 )(

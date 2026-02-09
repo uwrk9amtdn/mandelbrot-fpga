@@ -1,4 +1,4 @@
-module mandelbrot_single_iteration #(
+module single_iteration #(
     FRAC_WIDTH = 32
 )(
     input clk,

@@ -1,5 +1,5 @@
 // addr[31:16] -> addr[15:0] -> data 0 -> data 1 -> data 2 -> ... -> data N
-module mandelbrot_core_wrapper #(
+module core_wrapper #(
     logic [31:0] START_ADDR        = 0,
     int          RES_X             = 1920,
     int          RES_Y             = 1,
@@ -25,7 +25,7 @@ module mandelbrot_core_wrapper #(
     logic [2:-FRAC_WIDTH] core_s_x;
     logic [2:-FRAC_WIDTH] core_s_y;
 
-    mandelbrot_core #(
+    core #(
         .FRAC_WIDTH (),
     ) core (
         .clk        (clk),

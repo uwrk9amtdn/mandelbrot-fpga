@@ -2,10 +2,11 @@ module wrapper #(
     int          FRAC_WIDTH    = 8,
     int          NCORES        = 64,
     int          ARBITER_SIZE  = 4,
+    int          BURST_SIZE    = 16,
     logic [31:0] FB_START_ADDR = 0
     int          AXI_ID        = 0,
-    int          RES_X         = 1920,
-    int          RES_Y         = 1080
+    int          X_RES         = 1920,
+    int          Y_RES         = 1080
 )(
     input clk,
     input rst,
@@ -15,7 +16,7 @@ module wrapper #(
     input [15:0]          s_max_it,
     input [2:-FRAC_WIDTH] s_center_x,
     input [2:-FRAC_WIDTH] s_center_y,
-    input [2:-FRAC_WIDTH] s_pixel_distance,
+    input [2:-FRAC_WIDTH] s_xy_step,
 
     axi_intf m_axi_mem,
 );
@@ -63,10 +64,10 @@ module wrapper #(
 
     constant_multiplier #(
         .INPUT_WIDTH     (3+FRAC_WIDTH),
-        .CONSTANT_WIDTH  ($clog2(RES_X/2)+1),
+        .CONSTANT_WIDTH  ($clog2(X_RES/2)+1),
         .OUTPUT_WIDTH    (3+FRAC_WIDTH),
         .SIGNED          (1),
-        .CONSTANT        (RES_X/2),
+        .CONSTANT        (X_RES/2),
         .LATENCY         (1)
     ) cmul_x (
         .clk       (clk),
@@ -81,10 +82,10 @@ module wrapper #(
 
     constant_multiplier #(
         .INPUT_WIDTH     (3+FRAC_WIDTH),
-        .CONSTANT_WIDTH  ($clog2(RES_Y/2)+1),
+        .CONSTANT_WIDTH  ($clog2(Y_RES/2)+1),
         .OUTPUT_WIDTH    (3+FRAC_WIDTH),
         .SIGNED          (1),
-        .CONSTANT        (RES_Y/2),
+        .CONSTANT        (Y_RES/2),
         .LATENCY         (1)
     ) cmul_y (
         .clk       (clk),
@@ -99,10 +100,10 @@ module wrapper #(
 
     constant_multiplier #(
         .INPUT_WIDTH     (3+FRAC_WIDTH),
-        .CONSTANT_WIDTH  ($clog2(RES_Y/NCORES)+1),
+        .CONSTANT_WIDTH  ($clog2(Y_RES/NCORES)+1),
         .OUTPUT_WIDTH    (3+FRAC_WIDTH),
         .SIGNED          (1),
-        .CONSTANT        (RES_Y/NCORES),
+        .CONSTANT        (Y_RES/NCORES),
         .LATENCY         (1)
     ) cmul_core_diff_y (
         .clk       (clk),
@@ -115,24 +116,29 @@ module wrapper #(
         .m_data    (cmul_core_diff_y_m_data)
     );
 
-    for (genvar i = 0; i < N; i++) begin
+    for (genvar i = 0; i < N; i++) begin : core_gen
 
-        core_wrapper core #(
-            .START_ADDR        (),
-            .X_COUNT           (),
-            .Y_COUNT           (),
-            .PIXELS_PER_PACKET (),
-            .FRAC_WIDTH        ()
-        )(
-            .clk      (clk),
-            .rst      (rst),
-            .s_ready  (core_s_ready[i]),
-            .s_valid  (core_s_valid[i]),
-            .s_x      (core_s_x),
-            .s_y      (core_s_y),
-            .s_d      (core_s_d),
-            .s_max_it (core_s_max_i),
-            .m        (core_m)
+        localparam START_ADDR = FB_START_ADDR + (X_RES * Y_RES * 2 * i / NCORES);
+
+        core_wrapper #(
+            .START_ADDR  (START_ADDR),
+            .X_RES       (X_RES),
+            .Y_RES       (Y_RES/NCORES),
+            .N           (BURST_SIZE),
+            .FRAC_WIDTH  (FRAC_WIDTH)
+        ) core (
+            .clk       (clk),
+            .rst       (rst),
+
+            .s_ready   (core_s_ready[i]),
+            .s_valid   (core_s_valid[i]),
+            .s_x_start (core_s_x),
+            .s_y_start (core_s_y),
+
+            .s_xy_step (core_s_xy_step),
+            .s_max_it  (core_s_max_it),
+
+            .m         (core_m)
         );
 
     end
@@ -159,7 +165,7 @@ module wrapper #(
                 if (s_ready & s_valid) begin
                     center_x         <= s_center_x;
                     center_y         <= s_center_y;
-                    pixel_distance   <= s_pixel_distance;
+                    pixel_distance   <= s_xy_step;
                     max_it           <= s_max_it;
 
                     cmul_s_valid     <= 1;
@@ -171,7 +177,7 @@ module wrapper #(
                 end
             end
 
-            CALC_TOPLEFT: begin
+            PREPARE: begin
 
                 if (cmul_x_m_valid) begin
                     top_left_x       <= center_x - cmul_x_m_data;
@@ -193,6 +199,7 @@ module wrapper #(
                     ctr             <= 0;
                     core_s_x        <= top_left_x;
                     core_s_y        <= top_left_y;
+                    core_diff_y     <= cmul_core_diff_y_m_data;
                 end
 
             end
@@ -206,6 +213,7 @@ module wrapper #(
 
                     if (ctr == NCORES - 1) begin
                         ctr <= 0;
+                        state <= READY;
                     end else begin
                         ctr <= ctr + 1;
                     end

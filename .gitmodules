@@ -13,3 +13,6 @@
 [submodule "third_party/verilog-axis"]
 	path = third_party/verilog-axis
 	url = https://github.com/alexforencich/verilog-axis
+[submodule "third_party/taxi"]
+	path = third_party/taxi
+	url = https://github.com/fpganinja/taxi

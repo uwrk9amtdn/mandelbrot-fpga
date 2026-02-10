@@ -1,4 +1,4 @@
-module axi4_async_fifo #(
+module axi_async_fifo #(
     ADDR_WIDTH = 32,
     DATA_WIDTH = 32,
     ID_WIDTH   = 1

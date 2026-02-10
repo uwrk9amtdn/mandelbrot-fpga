@@ -110,7 +110,7 @@ CLK_WIZ_SOURCES := \
 
 
 DESIGN_SOURCES := \
-	../../hdmi/ac701_adv7811_setup.sv    \
+	../../hdmi/ac701_adv7511_setup.sv    \
 	../../axi.sv                         \
 	../../axi4_async_fifo.sv             \
 	../ddr3_model.sv                     \

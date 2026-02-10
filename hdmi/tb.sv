@@ -25,10 +25,10 @@ module tb;
     pullup(sda);
     pullup(scl);
 
-    ac701_adv7811_setup #(
+    ac701_adv7511_setup #(
         .CLK_FREQ (200.0e6),
         .SCL_FREQ (100.0e3)
-    ) ac701_adv7811_setup_i0 (
+    ) ac701_adv7511_setup_i0 (
         .clk   (clk),
         .rst   (rst),
 

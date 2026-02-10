@@ -1,4 +1,4 @@
-module ac701_adv7811_setup
+module ac701_adv7511_setup
 #(
     CLK_FREQ = 100.0e6,
     SCL_FREQ = 100.0e3
@@ -36,13 +36,13 @@ module ac701_adv7811_setup
     wire       i2c_wack;
     wire       i2c_wack_valid;
 
-    localparam [6:0] ADV7811_I2C_ADDR = 7'h39;
+    localparam [6:0] ADV7511_I2C_ADDR = 7'h39;
     localparam [6:0] PCA9548_I2C_ADDR = 7'h74;
 
     localparam SLEEP_DURATION = int'(2.0e6 / (1.0e9 / CLK_FREQ));
 
     localparam SETUP_BUS_SWITCH = 10;
-    localparam SETUP_ADV7811    = 20;
+    localparam SETUP_ADV7511    = 20;
     localparam WRITE_REG        = 40;
     localparam SLEEP            = 50;
     localparam I2C_ERROR        = 60;
@@ -136,7 +136,7 @@ module ac701_adv7811_setup
             case (pc)
                 0: call (SLEEP, SLEEP_DURATION);
                 1: call (SETUP_BUS_SWITCH);
-                2: call (SETUP_ADV7811);
+                2: call (SETUP_ADV7511);
                 3: done <= 1;
                 4: halt;
 
@@ -149,7 +149,7 @@ module ac701_adv7811_setup
                 15: i2c_send_op (3);
                 16: ret;
 
-                // SETUP_ADV7811
+                // SETUP_ADV7511
                 20: call(WRITE_REG, 8'h41, 8'h10);
                 21: call(WRITE_REG, 8'h98, 8'h03);
                 22: call(WRITE_REG, 8'h9a, 8'he0);
@@ -165,7 +165,7 @@ module ac701_adv7811_setup
 
                 // WRITE_REG
                 40: i2c_send_op (0);
-                41: i2c_send_op (2, {ADV7811_I2C_ADDR, 1'b0});
+                41: i2c_send_op (2, {ADV7511_I2C_ADDR, 1'b0});
                 42: i2c_check_wack;
                 43: i2c_send_op (2, args[0][7:0]);
                 44: i2c_check_wack;

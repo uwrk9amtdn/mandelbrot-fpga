@@ -94,18 +94,18 @@ module display_test(
     pullup(scl);
 
     wire rst;
-    wire adv7811_setup_error;
-    wire adv7811_setup_done;
+    wire adv7511_setup_error;
+    wire adv7511_setup_done;
 
-    ac701_adv7811_setup #(
+    ac701_adv7511_setup #(
         .CLK_FREQ (200.0e6),
         .SCL_FREQ (100.0e3)
-    ) ac701_adv7811_setup_i0 (
+    ) ac701_adv7511_setup_i0 (
         .clk   (clk),
         .rst   (rst),
 
-        .error (adv7811_setup_error),
-        .done  (adv7811_setup_done),
+        .error (adv7511_setup_error),
+        .done  (adv7511_setup_done),
 
         .sda_i (sda_i),
         .sda_o (sda_o),
@@ -213,8 +213,8 @@ module display_test(
 
     // vio_0 vio (
     //     .clk        (clk),
-    //     .probe_in0  (adv7811_setup_error),
-    //     .probe_in1  (adv7811_setup_done),
+    //     .probe_in0  (adv7511_setup_error),
+    //     .probe_in1  (adv7511_setup_done),
     //     .probe_in2  (init_calib_complete_synced),
     //     .probe_out0 (rst)
     // );

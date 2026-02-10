@@ -8,7 +8,7 @@ interface ddr3_intf #(
 );
     logic                rst_n;
     logic                ck;
-	logic                ck_n;
+    logic                ck_n;
     logic                cke;
     logic                cs_n;
     logic                ras_n;

@@ -1,5 +1,5 @@
 module top (
-    input clk_p,
+    input clk_p, // 200 MHz
     input clk_n,
 
     logic                ddr3_rst_n;
@@ -18,23 +18,28 @@ module top (
     wire  [DQS_BITS-1:0] ddr3_dqs_n;
     logic                ddr3_odt;
 );
+
     wrapper #(
-        .FRAC_WIDTH    (8),
-        .NCORES        (64),
-        .ARBITER_SIZE  (4),
-        .FB_START_ADDR (0)
-    ) wrapper0 (
-        .clk              (),
-        .rst              (),
+        .X_RES         (),
+        .Y_RES         (),
+        .FRAC_WIDTH    (),
+        .NCORES        (),
+        .ARBITER_SIZE  (),
+        .BURST_SIZE    (),
+        .FB_START_ADDR (),
+        .AXI_ID        ()
+    )(
+        .clk          (),
+        .rst          (),
 
-        .s_ready          (),
-        .s_valid          (),
-        .s_max_it         (),
-        .s_center_x       (),
-        .s_center_y       (),
-        .s_pixel_distance (),
+        .s_ready      (),
+        .s_valid      (),
+        .s_max_it     (),
+        .s_center_x   (),
+        .s_center_y   (),
+        .s_xy_step    (),
 
-        axi_intf mem,
+        axi_intf m_axi_mem
     );
 
     uberddr3_wrapper_axi #(

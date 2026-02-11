@@ -1,4 +1,4 @@
-module pll_clock_gen_7series #(
+module clock_gen_7series_pll #(
     int  N                     = 1,
     real INPUT_FREQ            = 200.0,
     real OUTPUT_FREQ       [N] = {200.0},

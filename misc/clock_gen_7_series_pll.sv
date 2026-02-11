@@ -8,10 +8,10 @@ module clock_gen_7series_pll #(
     real PFD_MAX               = 450.0,
     real PFD_MIN               = 19.0
 )(
-    input  clk_in,
-    output clk_out [N],
-    input  reset,
-    output locked
+    input          clk_in,
+    output [N-1:0] clk_out,
+    input          reset,
+    output         locked
 );
     if (N < 1 || N > 6) begin
         $error();

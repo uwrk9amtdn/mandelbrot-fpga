@@ -48,6 +48,18 @@ module top (
         .O (clk)
     );
 
+    clock_gen_7series_pll #(
+        .N                 (2),
+        .INPUT_FREQ        (200.0),
+        .OUTPUT_FREQ       ({800.0, 148.5}),
+        .MAX_ERROR_PERCENT ({0.0, 0.0})
+    ) clk_gen_i0 (
+        .clk_in  (clk),
+        .clk_out ({ddr3_clk, pixel_clk}),
+        .reset   (0),
+        .locked  ()
+    );
+
     clk_wiz_0 clk_wiz_0_i0(
         .clk_out1 (clk_wiz_out[0]),
         .clk_out2 (clk_wiz_out[1]),
@@ -235,6 +247,19 @@ module top (
         .s_axi              (),
 
         .ddr3               (ddr3)
+    );
+
+    axi_intf #()
+
+    axi_wc #(
+        .CONVERT_BURST        (1),
+        .CONVERT_NARROW_BURST (0)
+    ) wc (
+        .clk (),
+        .rst (),
+
+        .s (),
+        .m ()
     );
 
 endmodule

@@ -76,3 +76,13 @@ interface axis_intf #(DATA_WIDTH = 32);
     logic                  last;
     logic [KEEP_WIDTH-1:0] keep;
 endinterface
+
+// interface axis_intf #(
+//     type T       = logic [7:0],
+//     bit  LAST_EN = 0
+// );
+//     logic      ready;
+//     logic      valid;
+//     T          data;
+//     logic      last;
+// endinterface

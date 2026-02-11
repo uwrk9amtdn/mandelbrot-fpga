@@ -1,138 +1,80 @@
 module memory_reader #(
     bit [31:0] START_ADDR = 0,
-    int        AXI_ID     = 0
-)(
-    axi_intf m_axi_mem,
-
-    axis_intf m_axis
-);
-
-endmodule
-
-module memory_reader #(
-    X_RES         = 1920,
-    Y_RES         = 1080,
-    AXI_ID        = 1,
-    BURST_SIZE    = 128,
-    FB_START_ADDR = 0
+    int        AXI_ID     = 0,
+    int        COUNT      = 1920 * 1080,
+    int        BURST_SIZE = 128
 )(
     input clk,
     input rst,
 
-    axi m_axi_mem,
+    output s_ready,
+    input  s_valid,
 
-    input         pixel_clk,
-    input         vsync,
-    input         de
-    output [15:0] d,
+    axi_intf m_axi,
+
+    axis_intf m_axis
 );
 
-    reg  [29:0] addr_counter;
-    wire        vsync_synced;
-    reg         vsync_synced_d1 = 0;
+    if (m_axi.DATA_WIDTH != 16 || m_axis.DATA_WIDTH != 16) begin
+        $error();
+    end
 
-    reg  [23:0] fifo_din;
-    reg         fifo_wr_en = 0;
-    wire        fifo_full;
-    wire        fifo_empty;
+    if (COUNT < BURST_SIZE || COUNT % BURST_SIZE != 0) begin
+        $error();
+    end
 
+    logic [$clog2(COUNT/BURST_SIZE)-1:0] ctr;
 
-    axis_intf #(16) fifo_s ();
-    axis_intf #(16) fifo_m ();
+    assign m_axi.rready  = m_axis.ready;
+    assign m_axis.valid  = m_axi.rvalid;
+    assign m_axis.data   = m_axi.rdata;
 
-    axis_afifo #(
-        .SYNC_STAGES (2),
-        .DEPTH       (32)
-    )(
-        .s_clk (),
-        .s_rst (),
-        .m_clk (),
-        .m_rst (),
+    assign m_axi.arid    = AXI_ID;
+    assign m_axi.arlen   = BURST_SIZE - 1;
+    assign m_axi.arsize  = 1; // 2 bytes
+    assign m_axi.arburst = 1; // INCR
+    assign m_axi.arlock  = 0;
+    assign m_axi.arcache = 0;
+    assign m_axi.arprot  = 0;
+    assign m_axi.arqos   = 0;
 
-        .s (fifo_s),
-        .m (fifo_m)
-    );
+    typedef enum {READY, AR} state_t;
+    state_t state;
 
-    fifo_generator_0 fifo0 (
-        .wr_clk      (clk),
-        .rd_clk      (pixel_clk),
-        .din         (fifo_din),
-        .wr_en       (fifo_wr_en),
-        .rd_en       (de),
-        .dout        (rgb),
-        .full        (fifo_full),
-        .empty       (fifo_empty)
-    );
+    assign s_ready = state == READY;
 
-    xpm_cdc_single #(
-        .DEST_SYNC_FF   (4),
-        .INIT_SYNC_FF   (0),
-        .SIM_ASSERT_CHK (0),
-        .SRC_INPUT_REG  (0)
-    ) vsync_sync (
-       .dest_out (vsync_synced),
-       .dest_clk (clk),
-       .src_clk  (pixel_clk),
-       .src_in   (vsync)
-    );
-
-    assign m_axi_ram.awvalid = 0;
-    assign m_axi_ram.wvalid  = 0;
-    assign m_axi_ram.bready  = 0;
-    assign m_axi_ram.rready  = ~fifo_full;
-
-    typedef enum {WAIT_VSYNC, AR} state_t;
-    state_t state = WAIT_VSYNC;
-
-    always @(posedge clk) begin
-
-        vsync_synced_d1  <= vsync_synced;
-        fifo_wr_en       <= 0;
+    always_ff @(posedge clk) begin
 
         case (state)
-            WAIT_VSYNC: begin
-                addr_counter <= BASE_ADDR;
-                if (vsync_synced_d1 & ~vsync_synced) begin
-                    state        <= AR;
+            READY: begin
+                if (s_ready & s_valid) begin
+                    m_axi.arvalid <= 1;
+                    m_axi.araddr  <= START_ADDR;
+                    state         <= AR;
                 end
             end
 
             AR: begin
+                if (m_axi.arready & m_axi.arvalid) begin
+                    m_axi.araddr  <= m_axi.araddr + BURST_SIZE * 2;
 
-                m_axi_ram.arid    <= 0;
-                m_axi_ram.araddr  <= addr_counter << 2;
-                m_axi_ram.arlen   <= BURST_SIZE;
-                m_axi_ram.arsize  <= 2; // 4 bytes
-                m_axi_ram.arburst <= 0;
-                m_axi_ram.arlock  <= 0;
-                m_axi_ram.arcache <= 0;
-                m_axi_ram.arprot  <= 0;
-                m_axi_ram.arqos   <= 0;
-                m_axi_ram.arvalid <= 1;
-
-                if (m_axi_ram.arready & m_axi_ram.arvalid) begin
-                    if (addr_counter == BASE_ADDR + WIDTH * HEIGHT) begin
-                        m_axi_ram.arvalid <= 0;
-                        addr_counter      <= BASE_ADDR;
-                        state             <= WAIT_VSYNC;
+                    if (ctr == (COUNT/BURST_SIZE) - 1) begin
+                        ctr           <= 0;
+                        state         <= READY;
+                        m_axi.arvalid <= 0;
                     end else begin
-                        addr_counter <= addr_counter + BURST_SIZE;
+                        ctr <= ctr + 1;
                     end
                 end
             end
         endcase
 
-        if (m_axi_ram.rready & m_axi_ram.rvalid) begin
-            fifo_wr_en <= 1;
-            fifo_din   <= m_axi_ram.rdata[23:0];
+        if (rst) begin
+            ctr           <= 0;
+            m_axi.arvalid <= 0;
+            state         <= READY;
         end
 
-        if (rst) begin
-            m_axi_ram.arvalid <= 0;
-            vsync_synced_d1   <= 0;
-            fifo_wr_en        <= 0;
-            state             <= WAIT_VSYNC;
-        end
     end
 
 endmodule

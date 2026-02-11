@@ -262,4 +262,20 @@ module top (
         .m ()
     );
 
+    axis_intf #(16) fifo_s ();
+    axis_intf #(16) fifo_m ();
+
+    axis_afifo #(
+        .SYNC_STAGES (2),
+        .DEPTH       (32)
+    )(
+        .s_clk (),
+        .s_rst (),
+        .m_clk (),
+        .m_rst (),
+
+        .s (fifo_s),
+        .m (fifo_m)
+    );
+
 endmodule

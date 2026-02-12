@@ -1,8 +1,8 @@
 module memory_reader #(
-    bit [31:0] START_ADDR = 0,
-    int        AXI_ID     = 0,
-    int        COUNT      = 1920 * 1080,
-    int        BURST_SIZE = 128
+    bit [31:0] START_ADDR   = 0,
+    int        AXI_ID       = 0,
+    int        COUNT        = 1920 * 1080,
+    int        BURST_LENGTH = 128
 )(
     input clk,
     input rst,
@@ -19,18 +19,18 @@ module memory_reader #(
         $error();
     end
 
-    if (COUNT < BURST_SIZE || COUNT % BURST_SIZE != 0) begin
+    if (COUNT < BURST_LENGTH || COUNT % BURST_LENGTH != 0) begin
         $error();
     end
 
-    logic [$clog2(COUNT/BURST_SIZE)-1:0] ctr;
+    logic [$clog2(COUNT/BURST_LENGTH)-1:0] ctr;
 
     assign m_axi.rready  = m_axis.ready;
     assign m_axis.valid  = m_axi.rvalid;
     assign m_axis.data   = m_axi.rdata;
 
     assign m_axi.arid    = AXI_ID;
-    assign m_axi.arlen   = BURST_SIZE - 1;
+    assign m_axi.arlen   = BURST_LENGTH - 1;
     assign m_axi.arsize  = 1; // 2 bytes
     assign m_axi.arburst = 1; // INCR
     assign m_axi.arlock  = 0;
@@ -56,9 +56,9 @@ module memory_reader #(
 
             AR: begin
                 if (m_axi.arready & m_axi.arvalid) begin
-                    m_axi.araddr  <= m_axi.araddr + BURST_SIZE * 2;
+                    m_axi.araddr  <= m_axi.araddr + BURST_LENGTH * 2;
 
-                    if (ctr == (COUNT/BURST_SIZE) - 1) begin
+                    if (ctr == (COUNT/BURST_LENGTH) - 1) begin
                         ctr           <= 0;
                         state         <= READY;
                         m_axi.arvalid <= 0;

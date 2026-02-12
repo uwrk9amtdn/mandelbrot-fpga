@@ -1,11 +1,11 @@
 module axis_rr_arbiter_tree #(
-    int SLAVE_COUNT  = 5,
-    int ARBITER_SIZE = 2
+    int NS   = 5, // total number of slaves
+    int SANS = 2  // single arbiter's number of slaves
 )(
     input clk,
     input rst,
 
-    axis_intf s[SLAVE_COUNT],
+    axis_intf s[NS],
     axis_intf m
 );
 
@@ -23,13 +23,13 @@ module axis_rr_arbiter_tree #(
         return ((x + d - 1) / d) * d;
     endfunction
 
-    localparam D = calc_depth(SLAVE_COUNT, ARBITER_SIZE);
-    localparam N = next_multiple(SLAVE_COUNT, ARBITER_SIZE);
+    localparam D = calc_depth(NS, SANS);
+    localparam N = next_multiple(NS, SANS);
 
     axis_intf #(m.DATA_WIDTH) links [D+1][N]();
 
     for (genvar i = 0; i < N; i++) begin
-        if (i < SLAVE_COUNT) begin
+        if (i < NS) begin
             assign s[i].ready        = links[0][i].ready;
             assign links[0][i].valid = s[i].valid;
             assign links[0][i].data  = s[i].data;
@@ -40,11 +40,11 @@ module axis_rr_arbiter_tree #(
     end
 
     for (genvar i = 1; i <= D; i++) begin
-        localparam int number_of_arbiters = next_multiple(SLAVE_COUNT, ARBITER_SIZE**i) / (ARBITER_SIZE**i);
+        localparam int number_of_arbiters = next_multiple(NS, SANS**i) / (SANS**i);
         for (genvar j = 0; j < N; j++) begin
             if (j < number_of_arbiters) begin
-                axis_intf #(m.DATA_WIDTH) arbiter_m;
-                axis_rr_arbiter #(ARBITER_SIZE) arbiter (clk, rst, links[i-1][j*ARBITER_SIZE+:ARBITER_SIZE], arbiter_m);
+                axis_intf #(m.DATA_WIDTH) arbiter_m();
+                axis_rr_arbiter #(SANS) arbiter (clk, rst, links[i-1][j*SANS+:SANS], arbiter_m);
                 axis_skid_buffer skid_buffer (clk, rst, arbiter_m, links[i][j]);
             end else begin
                 assign links[i][j].valid = 0;

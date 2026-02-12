@@ -1,8 +1,8 @@
 module clock_gen_7series_pll #(
     int  N                     = 1,
     real INPUT_FREQ            = 200.0,
-    real OUTPUT_FREQ       [N] = {200.0},
-    real MAX_ERROR_PERCENT [N] = {0.0},
+    real OUTPUT_FREQ       [N] = '{default: 200.0},
+    real MAX_ERROR_PERCENT [N] = '{default: 0.0},
     real PLL_VCO_MIN           = 800.0,
     real PLL_VCO_MAX           = 1600.0,
     real PFD_MAX               = 450.0,
@@ -25,8 +25,9 @@ module clock_gen_7series_pll #(
     typedef struct {
         bit  valid;
         int  M;
-        int  D[N];
+        int  D[6];
         real max_error;
+        real freq [6];
     } pll_config_t;
 
     function pll_config_t calc_best_config();
@@ -50,6 +51,7 @@ module clock_gen_7series_pll #(
             cfg.valid     = 1;
             cfg.M         = m;
             cfg.max_error = 0;
+            cfg.D         = '{default:1};
 
             for (int i = 0; i < N; i++) begin
 
@@ -58,7 +60,8 @@ module clock_gen_7series_pll #(
                 if (div < 1) div = 1;
                 if (div > 128) div = 128;
 
-                cfg.D[i] = div;
+                cfg.D[i]    = div;
+                cfg.freq[i] = INPUT_FREQ * cfg.M / cfg.D[i];
 
                 out_freq = vco_freq / div;
 
@@ -81,6 +84,7 @@ module clock_gen_7series_pll #(
                     best_cfg.max_error = cfg.max_error;
                     best_cfg.M         = cfg.M;
                     best_cfg.D         = cfg.D;
+                    best_cfg.freq      = cfg.freq;
 
                     if (cfg.max_error == 0.0) break;
                 end
@@ -94,6 +98,17 @@ module clock_gen_7series_pll #(
 
     if (!CFG.valid) begin
         $error();
+    end
+
+    initial begin
+        string s;
+        s.append("-------------------------\n");
+        s.append("PLL CLOCK CONFIGURATION:\n");
+        for (int i = 0; i < N; i++) begin
+            s.append($sformatf("CLK %d : %.6fMHz\n", i, CFG.freq[i]));
+        end
+        s.append("-------------------------\n");
+        $info(s);
     end
 
     wire clkfbin;
@@ -110,11 +125,11 @@ module clock_gen_7series_pll #(
         .CLKIN1_PERIOD        (1000.0/INPUT_FREQ),
 
         .CLKOUT0_DIVIDE       (CFG.D[0]),
-        .CLKOUT1_DIVIDE       (N > 1 ? CFG.D[1] : 1),
-        .CLKOUT2_DIVIDE       (N > 2 ? CFG.D[2] : 1),
-        .CLKOUT3_DIVIDE       (N > 3 ? CFG.D[3] : 1),
-        .CLKOUT4_DIVIDE       (N > 4 ? CFG.D[4] : 1),
-        .CLKOUT5_DIVIDE       (N > 5 ? CFG.D[5] : 1),
+        .CLKOUT1_DIVIDE       (CFG.D[1]),
+        .CLKOUT2_DIVIDE       (CFG.D[2]),
+        .CLKOUT3_DIVIDE       (CFG.D[3]),
+        .CLKOUT4_DIVIDE       (CFG.D[4]),
+        .CLKOUT5_DIVIDE       (CFG.D[5]),
 
         .CLKOUT0_DUTY_CYCLE   (0.500),
         .CLKOUT1_DUTY_CYCLE   (0.500),

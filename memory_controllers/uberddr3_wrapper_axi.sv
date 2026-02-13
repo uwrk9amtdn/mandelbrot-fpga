@@ -27,6 +27,11 @@ module uberddr3_wrapper_axi #(
         $error();
     end
 
+
+    if (s_axi.ID_WIDTH < 4) begin
+        $error();
+    end
+
     ddr3_top_axi #(
         .CONTROLLER_CLK_PERIOD (CLK_PERIOD_PS),
         .DDR3_CLK_PERIOD       (DDR3_CLK_PERIOD_PS),
@@ -50,7 +55,7 @@ module uberddr3_wrapper_axi #(
         .i_controller_clk (clk),
         .i_ddr3_clk       (ddr3_clk),
         .i_ref_clk        (ref_clk),
-        .i_ddr3_clk_90    (0), // ODELAY_SUPPORTED = 1
+        .i_ddr3_clk_90    ('0), // ODELAY_SUPPORTED = 1
         .i_rst_n          (~rst),
 
         .s_axi_awvalid    (s_axi.awvalid),
@@ -113,7 +118,7 @@ module uberddr3_wrapper_axi #(
 
         .o_calib_complete (calib_complete),
 
-        .i_user_self_refresh (0)
+        .i_user_self_refresh ('0)
     );
 
 endmodule

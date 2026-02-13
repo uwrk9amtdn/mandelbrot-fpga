@@ -1,3 +1,5 @@
+import mbrot::*;
+
 // addr[31:16] -> addr[15:0] -> data 0 -> data 1 -> data 2 -> ... -> data N
 module core_wrapper #(
     logic [31:0] START_ADDR  = 0,
@@ -42,7 +44,7 @@ module core_wrapper #(
 
     core #(
         .FRAC_WIDTH (FRAC_WIDTH)
-    ) core (
+    ) core0 (
         .clk        (clk),
         .rst        (rst),
 
@@ -50,15 +52,19 @@ module core_wrapper #(
 
         .s_ready    (core_s_ready),
         .s_valid    (core_s_valid),
-        .s_x_start  (core_s_x),
-        .s_y_start  (core_s_y),
+        .s_x        (core_s_x),
+        .s_y        (core_s_y),
 
         .m_ready    (core_m_ready),
         .m_valid    (core_m_valid),
         .m_it       (core_m_it)
     );
 
-    if (N % core.N != 0) begin
+    // if (N % core0.N != 0) begin
+    //     $error();
+    // end
+
+    if (N % SI_LATENCY != 0) begin
         $error();
     end
 

@@ -1,3 +1,5 @@
+import mbrot::*;
+
 (* use_dsp = "yes" *) module single_iteration #(
     FRAC_WIDTH = 32
 )(
@@ -13,7 +15,8 @@
     output                        m_stop
 );
 
-    localparam LATENCY = 4;
+    // localparam LATENCY = 4;
+    localparam int LATENCY = SI_LATENCY;
 
     logic signed [2:-FRAC_WIDTH] a_reg    [LATENCY:0];
     logic signed [2:-FRAC_WIDTH] b_reg    [LATENCY:0];

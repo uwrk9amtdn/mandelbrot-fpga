@@ -30,7 +30,7 @@ module top (
     output [0:0]  ddr3_odt
 );
 
-    localparam int NCORES              = 16;
+    localparam int NCORES              = 10;
     localparam int FRAC_WIDTH          = 16;
     localparam int ARBITER_TREE_SANS   = 4;
     localparam int BURST_LENGTH        = 16;
@@ -38,7 +38,6 @@ module top (
 
     logic       clk;
     logic       ddr3_clk;
-    logic       pixel_clk;
 
     logic       rst;
 
@@ -55,12 +54,12 @@ module top (
     logic                 start;
 
     axi_intf #(
-        .ID_WIDTH   (1),
+        .ID_WIDTH   (4),
         .ADDR_WIDTH (30),
         .DATA_WIDTH (16)
     ) ddr3_axi_16 ();
 
-    generate : clk_gen
+    begin : clk_gen
         logic clk_nobuf;
 
         IBUFDS ibufds (
@@ -82,7 +81,7 @@ module top (
         ) clk_gen0 (
             .clk_in  (clk),
             .clk_out ({ddr3_clk}),
-            .reset   (0),
+            .reset   ('0),
             .locked  ()
         );
 
@@ -90,24 +89,19 @@ module top (
             .N                 (1),
             .INPUT_FREQ        (200.0),
             .OUTPUT_FREQ       ({148.5}),
-            .MAX_ERROR_PERCENT ({0.015})
+            .MAX_ERROR_PERCENT ({0.050})
         ) clk_gen1 (
             .clk_in  (clk),
             .clk_out ({pixel_clk}),
-            .reset   (0),
+            .reset   ('0),
             .locked  ()
         );
-    endgenerate
+    end
 
-    generate : rst_gen
-        logic rst_;
+    begin : rst_gen
+        logic rst_ = 0;
         assign rst = rst_ | vio_rst;
-        logic [3:0] ctr;
-
-        initial begin
-            ctr  = 0;
-            rst_ = 1;
-        end
+        logic [3:0] ctr = 0;
 
         always_ff @(posedge clk) begin
             if (ctr == 15) begin
@@ -116,9 +110,9 @@ module top (
                 ctr <= ctr + 1;
             end
         end
-    endgenerate
+    end
 
-    generate : i2c_gen
+    begin : i2c_gen
         logic sda_i;
         logic sda_o;
         logic scl_i;
@@ -170,9 +164,9 @@ module top (
             .scl_i (scl_i),
             .scl_o (scl_o)
         );
-    endgenerate
+    end
 
-    generate : ddr3_gen
+    begin : ddr3_gen
         ddr3_intf #(
             .DM_BITS  (8),
             .BA_BITS  (3),
@@ -199,14 +193,14 @@ module top (
         assign ddr3_odt     = ddr3.odt;
 
         axi_intf #(
-            .ID_WIDTH   (1),
+            .ID_WIDTH   (4),
             .ADDR_WIDTH (30),
             .DATA_WIDTH (512)
         ) ddr3_axi ();
 
         uberddr3_wrapper_axi #(
-            CLK_PERIOD_PS      (5000),
-            DDR3_CLK_PERIOD_PS (1250)
+            .CLK_PERIOD_PS      (5000),
+            .DDR3_CLK_PERIOD_PS (1250)
         ) uberddr3 (
             .clk            (clk),
             .rst            (rst),
@@ -224,26 +218,26 @@ module top (
         axi_wc #(
             .CONVERT_BURST        (1),
             .CONVERT_NARROW_BURST (0)
-        ) (
+        ) wc (
             .clk (clk),
             .rst (rst),
             .s   (ddr3_axi_16),
             .m   (ddr3_axi)
         );
-    endgenerate
+    end
 
-    generate : display_gen
+    begin : display_gen
         axis_intf #(16) fifo_s ();
         axis_intf #(16) fifo_m ();
 
         axis_afifo #(
             .SYNC_STAGES (2),
             .DEPTH       (64)
-        )(
+        ) afifo (
             .s_clk (clk),
             .s_rst (rst),
             .m_clk (pixel_clk),
-            .m_rst (0),
+            .m_rst ('0),
 
             .s (fifo_s),
             .m (fifo_m)
@@ -332,9 +326,9 @@ module top (
             .vsync (vsync),
             .de    (de)
         );
-    endgenerate
+    end
 
-    generate : wrapper_gen
+    begin : wrapper_gen
         logic start_d1;
         logic wrapper_s_valid;
 
@@ -370,8 +364,7 @@ module top (
                 wrapper_s_valid  <= 0;
             end
         end
-
-    endgenerate
+    end
 
     vio_0 vio (
         .clk        (clk),

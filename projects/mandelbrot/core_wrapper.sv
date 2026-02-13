@@ -20,6 +20,10 @@ module core_wrapper #(
     axis_intf m
 );
 
+    if ((X_RES * Y_RES) % N != 0) begin
+        $error();
+    end
+
     logic                        core_s_ready;
     logic                        core_s_valid;
     logic signed [2:-FRAC_WIDTH] core_s_x;
@@ -53,6 +57,10 @@ module core_wrapper #(
         .m_valid    (core_m_valid),
         .m_it       (core_m_it)
     );
+
+    if (N % core.N != 0) begin
+        $error();
+    end
 
     logic [$clog2(X_RES)-1:0] x_ctr;
     logic [$clog2(Y_RES)-1:0] y_ctr;

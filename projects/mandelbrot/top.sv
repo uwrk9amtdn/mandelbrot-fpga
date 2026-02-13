@@ -30,20 +30,29 @@ module top (
     output [0:0]  ddr3_odt
 );
 
-    localparam int NCORES       = 16;
-    localparam int FRAC_WIDTH   = 16;
-    localparam int ARBITER_SIZE = 4;
-    localparam int BURST_LENGTH = 4;
+    localparam int NCORES              = 16;
+    localparam int FRAC_WIDTH          = 16;
+    localparam int ARBITER_TREE_SANS   = 4;
+    localparam int BURST_LENGTH        = 16;
+    localparam int READER_BURST_LENGTH = 4;
 
     logic       clk;
     logic       ddr3_clk;
     logic       pixel_clk;
 
     logic       rst;
+
+    logic       vio_rst;
     logic       adv7511_setup_error;
     logic       adv7511_setup_done;
     logic       ddr3_calib_complete;
     logic [3:0] cc_start_index;
+
+    logic [15:0]          max_it;
+    logic [2:-FRAC_WIDTH] center_x;
+    logic [2:-FRAC_WIDTH] center_y;
+    logic [2:-FRAC_WIDTH] xy_step;
+    logic                 start;
 
     axi_intf #(
         .ID_WIDTH   (1),
@@ -88,6 +97,25 @@ module top (
             .reset   (0),
             .locked  ()
         );
+    endgenerate
+
+    generate : rst_gen
+        logic rst_;
+        assign rst = rst_ | vio_rst;
+        logic [3:0] ctr;
+
+        initial begin
+            ctr  = 0;
+            rst_ = 1;
+        end
+
+        always_ff @(posedge clk) begin
+            if (ctr == 15) begin
+                rst_ <= 0;
+            end else begin
+                ctr <= ctr + 1;
+            end
+        end
     endgenerate
 
     generate : i2c_gen
@@ -227,7 +255,7 @@ module top (
             .START_ADDR   (0),
             .AXI_ID       (0),
             .COUNT        (1920*1080),
-            .BURST_LENGTH (128)
+            .BURST_LENGTH (READER_BURST_LENGTH)
         ) mr (
             .clk     (clk),
             .rst     (rst),
@@ -306,40 +334,59 @@ module top (
         );
     endgenerate
 
-    /*
     generate : wrapper_gen
+        logic start_d1;
+        logic wrapper_s_valid;
+
         wrapper #(
-            .X_RES         (1920),
-            .Y_RES         (1080),
-            .FRAC_WIDTH    (16),
-            .NCORES        (8),
-            .ARBITER_SIZE  (4),
-            .BURST_SIZE    (16),
-            .FB_START_ADDR (0),
-            .AXI_ID        (1)
+            .X_RES             (1920),
+            .Y_RES             (1080),
+            .FRAC_WIDTH        (FRAC_WIDTH),
+            .NCORES            (NCORES),
+            .ARBITER_TREE_SANS (ARBITER_TREE_SANS),
+            .BURST_LENGTH      (BURST_LENGTH),
+            .FB_START_ADDR     (0),
+            .AXI_ID            (0)
         ) wrapper (
             .clk          (clk),
-            .rst          (),
+            .rst          (rst),
 
             .s_ready      (),
-            .s_valid      (),
-            .s_max_it     (),
-            .s_center_x   (),
-            .s_center_y   (),
-            .s_xy_step    (),
+            .s_valid      (wrapper_s_valid),
+            .s_max_it     (max_it),
+            .s_center_x   (center_x),
+            .s_center_y   (center_y),
+            .s_xy_step    (xy_step),
 
-            axi_intf m_axi_mem
+            .m_axi_mem    (ddr3_axi_16)
         );
+
+
+        always_ff @(posedge clk) begin
+            start_d1        <= start;
+            wrapper_s_valid <= ~start_d1 & start;
+            if (rst) begin
+                start_d1         <= 0;
+                wrapper_s_valid  <= 0;
+            end
+        end
+
     endgenerate
-    */
-    /*
+
     vio_0 vio (
         .clk        (clk),
-        .probe_in0  (),
-        .probe_in1  (),
-        .probe_out0 (),
-        .probe_out1 ()
+
+        .probe_in0  (adv7511_setup_error),
+        .probe_in1  (adv7511_setup_done),
+        .probe_in2  (ddr3_calib_complete),
+
+        .probe_out0 (vio_rst),
+        .probe_out1 (cc_start_index),
+        .probe_out2 (max_it),
+        .probe_out3 (center_x),
+        .probe_out4 (center_y),
+        .probe_out5 (xy_step),
+        .probe_out6 (start)
     );
-    */
 
 endmodule

@@ -1,6 +1,6 @@
 module memory_writer #(
-    int BURST_SIZE = 16,
-    int AXI_ID     = 1
+    int BURST_LENGTH = 16,
+    int AXI_ID       = 1
 )(
     input clk,
     input rst,
@@ -9,12 +9,12 @@ module memory_writer #(
     axi_intf  m_axi
 );
 
-    if (s_axis.DATA_WIDTH != 16 || m_axi.DATA_WIDTH != 16 || m_axi.ADDR_WIDTH != 32) begin
+    if (s_axis.DATA_WIDTH != 16 || m_axi.DATA_WIDTH != 16) begin
         $error();
     end
 
     assign m_axi.awid     = AXI_ID;
-    assign m_axi.awlen    = BURST_SIZE - 1;
+    assign m_axi.awlen    = BURST_LENGTH - 1;
     assign m_axi.awsize   = $clog2(m_axi.DATA_WIDTH / 8);
     assign m_axi.awburst  = 2'b01;
     assign m_axi.awlock   = 0;
@@ -61,7 +61,7 @@ module memory_writer #(
         case (state)
             ADDR: begin
                 if (s_axis.ready & s_axis.valid) begin
-                    m_axi.awaddr <= {m_axi.awaddr[15:0], s_axis.data};
+                    m_axi.awaddr <= {m_axi.awaddr[15:0], s_axis.data}; // TODO: addr width check
 
                     if (ctr == 1) begin
                         ctr           <= 0;

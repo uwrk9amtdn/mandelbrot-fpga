@@ -1,12 +1,12 @@
 module wrapper #(
-    int          X_RES         = 1920,
-    int          Y_RES         = 1080,
-    int          FRAC_WIDTH    = 8,
-    int          NCORES        = 54,
-    int          ARBITER_SIZE  = 4,
-    int          BURST_SIZE    = 16,
-    logic [31:0] FB_START_ADDR = 0,
-    int          AXI_ID        = 0
+    int          X_RES             = 1920,
+    int          Y_RES             = 1080,
+    int          FRAC_WIDTH        = 8,
+    int          NCORES            = 54,
+    int          ARBITER_TREE_SANS = 4,
+    int          BURST_LENGTH      = 16,
+    logic [31:0] FB_START_ADDR     = 0,
+    int          AXI_ID            = 0
 )(
     input  logic clk,
     input  logic rst,
@@ -66,7 +66,7 @@ module wrapper #(
 
     axis_intf #(16) core_m [NCORES] ();
 
-    axis_rr_arbiter_tree #(NCORES, ARBITER_SIZE) arbiter_tree (clk, rst, core_m, arbiter_tree_m);
+    axis_rr_arbiter_tree #(NCORES, ARBITER_TREE_SANS) arbiter_tree (clk, rst, core_m, arbiter_tree_m);
 
     constant_multiplier #(
         .INPUT_WIDTH     (3+FRAC_WIDTH),
@@ -130,7 +130,7 @@ module wrapper #(
             .START_ADDR  (START_ADDR),
             .X_RES       (X_RES),
             .Y_RES       (Y_RES/NCORES),
-            .N           (BURST_SIZE),
+            .N           (BURST_LENGTH),
             .FRAC_WIDTH  (FRAC_WIDTH)
         ) core (
             .clk       (clk),
@@ -150,8 +150,8 @@ module wrapper #(
     end
 
     memory_writer #(
-        .BURST_SIZE (BURST_SIZE),
-        .AXI_ID     (AXI_ID)
+        .BURST_LENGTH (BURST_LENGTH),
+        .AXI_ID       (AXI_ID)
     ) memw (
         .clk    (clk),
         .rst    (rst),

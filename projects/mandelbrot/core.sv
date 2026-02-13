@@ -18,15 +18,11 @@ module core #(
 
     logic [2:-FRAC_WIDTH] msi_s_a;
     logic [2:-FRAC_WIDTH] msi_s_b;
-    logic [2:-FRAC_WIDTH] msi_s_a2;
-    logic [2:-FRAC_WIDTH] msi_s_b2;
     logic [2:-FRAC_WIDTH] msi_s_c;
     logic [2:-FRAC_WIDTH] msi_s_d;
 
     logic [2:-FRAC_WIDTH] msi_m_a;
     logic [2:-FRAC_WIDTH] msi_m_b;
-    logic [2:-FRAC_WIDTH] msi_m_a2;
-    logic [2:-FRAC_WIDTH] msi_m_b2;
     logic                 msi_m_stop;
 
     single_iteration #(
@@ -36,15 +32,11 @@ module core #(
 
         .s_a    (msi_s_a),
         .s_b    (msi_s_b),
-        .s_a2   (msi_s_a2),
-        .s_b2   (msi_s_b2),
         .s_c    (msi_s_c),
         .s_d    (msi_s_d),
 
         .m_a    (msi_m_a),
         .m_b    (msi_m_b),
-        .m_a2   (msi_m_a2),
-        .m_b2   (msi_m_b2),
         .m_stop (msi_m_stop)
     );
 
@@ -66,8 +58,6 @@ module core #(
 
     assign msi_s_a  = state == LOAD ? 0 : msi_m_a;
     assign msi_s_b  = state == LOAD ? 0 : msi_m_b;
-    assign msi_s_a2 = state == LOAD ? 0 : msi_m_a2;
-    assign msi_s_b2 = state == LOAD ? 0 : msi_m_b2;
     assign msi_s_c  = x_mem[ptr];
     assign msi_s_d  = y_mem[ptr];
 

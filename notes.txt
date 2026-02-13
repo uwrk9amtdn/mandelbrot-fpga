@@ -6,3 +6,5 @@ axi backpressure
 deep pipelines ready combinational
 
 ping pong buffer
+
+// TODO: convert $error system tasks to $fatal

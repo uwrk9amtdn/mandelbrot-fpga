@@ -34,81 +34,126 @@ module top (
     localparam int FRAC_WIDTH          = 16;
     localparam int ARBITER_TREE_SANS   = 4;
     localparam int BURST_LENGTH        = 16;
-    localparam int READER_BURST_LENGTH = 4;
+    localparam int READER_BURST_LENGTH = 32;
+
+    localparam real CLOCK_FREQ = 200.0;
+
+    logic       sysclk;
+
+    logic       ddr3_clk;
+    logic       ddr3_clk_90;
+    logic       ddr3_ctrl_clk;
+    logic       ddr3_ctrl_rst;
 
     logic       clk;
-    logic       ddr3_clk;
-
     logic       rst;
 
-    logic       vio_rst;
-    logic       adv7511_setup_error;
-    logic       adv7511_setup_done;
-    logic       ddr3_calib_complete;
-    logic [3:0] cc_start_index;
+    // ddr3_ctrl_clk
 
+    axi_intf #(
+        .ID_WIDTH   (4),
+        .ADDR_WIDTH (30),
+        .DATA_WIDTH (64)
+    ) ddr3_axi_64 ();
+
+    logic ddr3_calib_complete;
+
+    // clk
     logic [15:0]          max_it;
     logic [2:-FRAC_WIDTH] center_x;
     logic [2:-FRAC_WIDTH] center_y;
     logic [2:-FRAC_WIDTH] xy_step;
     logic                 start;
 
-    axi_intf #(
-        .ID_WIDTH   (4),
-        .ADDR_WIDTH (30),
-        .DATA_WIDTH (16)
-    ) ddr3_axi_16 ();
+    logic adv7511_setup_error;
+    logic adv7511_setup_done;
+
+    // pixel_clk
+    logic [3:0] cc_start_index;
 
     begin : clk_gen
-        logic clk_nobuf;
+        logic sysclk_nobuf;
 
         IBUFDS ibufds (
             .I  (clk_p),
             .IB (clk_n),
-            .O  (clk_nobuf)
+            .O  (sysclk_nobuf)
         );
 
         BUFG bufg (
-            .I (clk_nobuf),
-            .O (clk)
+            .I (sysclk_nobuf),
+            .O (sysclk)
         );
 
         clock_gen_7series_pll #(
-            .N                 (1),
-            .INPUT_FREQ        (200.0),
-            .OUTPUT_FREQ       ({800.0}),
-            .MAX_ERROR_PERCENT ({0.0})
+            .N               (3),
+            .INPUT_FREQ      (200.0),
+            .OUTPUT_FREQ     ('{100.0, 400.0, 400.0}),
+            .OUTPUT_PHASE    ('{0.0, 0.0, 90.0}),
+            .MAX_FREQ_ERROR  ('{default:0.0}),
+            .MAX_PHASE_ERROR ('{default:0.0}),
+            .VCO_MIN         (800.0),
+            .VCO_MAX         (1866.0),
+            .PFD_MIN         (19.0),
+            .PFD_MAX         (500.0)  // speed grade -2
         ) clk_gen0 (
-            .clk_in  (clk),
-            .clk_out ({ddr3_clk}),
-            .reset   ('0),
-            .locked  ()
+            .clk_in    (sysclk),
+            .clk_out   ({ddr3_ctrl_clk, ddr3_clk, ddr3_clk_90}),
+            .reset     ('0),
+            .locked    ()
         );
 
         clock_gen_7series_pll #(
-            .N                 (1),
-            .INPUT_FREQ        (200.0),
-            .OUTPUT_FREQ       ({148.5}),
-            .MAX_ERROR_PERCENT ({0.050})
+            .N               (1),
+            .INPUT_FREQ      (200.0),
+            .OUTPUT_FREQ     ('{148.5}),
+            .OUTPUT_PHASE    ('{0.0}),
+            .MAX_FREQ_ERROR  ('{0.015}),
+            .MAX_PHASE_ERROR ('{default:0.0}),
+            .VCO_MIN         (800.0),
+            .VCO_MAX         (1866.0),
+            .PFD_MIN         (19.0),
+            .PFD_MAX         (500.0)  // speed grade -2
         ) clk_gen1 (
-            .clk_in  (clk),
-            .clk_out ({pixel_clk}),
-            .reset   ('0),
-            .locked  ()
+            .clk_in    (sysclk),
+            .clk_out   (pixel_clk),
+            .reset     ('0),
+            .locked    ()
+        );
+
+        clock_gen_7series_pll #(
+            .N               (1),
+            .INPUT_FREQ      (200.0),
+            .OUTPUT_FREQ     ('{CLOCK_FREQ}),
+            .OUTPUT_PHASE    ('{0.0}),
+            .MAX_FREQ_ERROR  ('{default:0.0}),
+            .MAX_PHASE_ERROR ('{default:0.0}),
+            .VCO_MIN         (800.0),
+            .VCO_MAX         (1866.0),
+            .PFD_MIN         (19.0),
+            .PFD_MAX         (500.0)  // speed grade -2
+        ) clk_gen2 (
+            .clk_in    (sysclk),
+            .clk_out   (clk),
+            .reset     ('0),
+            .locked    ()
         );
     end
 
     begin : rst_gen
-        logic rst_ = 0;
-        assign rst = rst_ | vio_rst;
-        logic [3:0] ctr = 0;
+        logic rst_ = 1;
+        logic ddr3_ctrl_rst_ = 1;
+
+        assign rst = rst_;
+
+        assign ddr3_ctrl_rst = ddr3_ctrl_rst_;
 
         always_ff @(posedge clk) begin
-            if (ctr == 15) begin
-                rst_ <= 0;
-            end else begin
-                ctr <= ctr + 1;
-            end
+            rst_ <= 0;
+        end
+
+        always_ff @(posedge ddr3_ctrl_clk) begin
+            ddr3_ctrl_rst_ <= 0;
         end
     end
 
@@ -199,14 +244,15 @@ module top (
         ) ddr3_axi ();
 
         uberddr3_wrapper_axi #(
-            .CLK_PERIOD_PS      (5000),
-            .DDR3_CLK_PERIOD_PS (1250)
+            .CLK_PERIOD_PS      (10000),
+            .DDR3_CLK_PERIOD_PS (2500)
         ) uberddr3 (
-            .clk            (clk),
-            .rst            (rst),
+            .clk            (ddr3_ctrl_clk),
+            .rst            (ddr3_ctrl_rst),
 
             .ddr3_clk       (ddr3_clk),
-            .ref_clk        (clk), // 200 MHz
+            .ddr3_clk_90    (ddr3_clk_90),
+            .ref_clk        (sysclk), // 200 MHz
 
             .calib_complete (ddr3_calib_complete),
 
@@ -219,23 +265,23 @@ module top (
             .CONVERT_BURST        (1),
             .CONVERT_NARROW_BURST (0)
         ) wc (
-            .clk (clk),
-            .rst (rst),
-            .s   (ddr3_axi_16),
+            .clk (ddr3_ctrl_clk),
+            .rst (ddr3_ctrl_rst),
+            .s   (ddr3_axi_64),
             .m   (ddr3_axi)
         );
     end
 
     begin : display_gen
-        axis_intf #(16) fifo_s ();
-        axis_intf #(16) fifo_m ();
+        axis_intf #(16, 0) fifo_s ();
+        axis_intf #(16, 0) fifo_m ();
 
         axis_afifo #(
             .SYNC_STAGES (2),
             .DEPTH       (64)
         ) afifo (
-            .s_clk (clk),
-            .s_rst (rst),
+            .s_clk (ddr3_ctrl_clk),
+            .s_rst (ddr3_ctrl_rst),
             .m_clk (pixel_clk),
             .m_rst ('0),
 
@@ -251,13 +297,13 @@ module top (
             .COUNT        (1920*1080),
             .BURST_LENGTH (READER_BURST_LENGTH)
         ) mr (
-            .clk     (clk),
-            .rst     (rst),
+            .clk     (ddr3_ctrl_clk),
+            .rst     (ddr3_ctrl_rst),
 
             .s_ready (),
             .s_valid (mr_s_valid),
 
-            .m_axi   (ddr3_axi_16),
+            .m_axi   (ddr3_axi_64),
             .m_axis  (fifo_s)
         );
 
@@ -271,12 +317,12 @@ module top (
             .SRC_INPUT_REG  (0)
         ) vsync_sync (
             .dest_out (vsync_synced),
-            .dest_clk (clk),
+            .dest_clk (ddr3_ctrl_clk),
             .src_clk  (pixel_clk),
             .src_in   (vsync)
         );
 
-        always_ff @(posedge clk) begin
+        always_ff @(posedge ddr3_ctrl_clk) begin
             vsync_synced_d1 <= vsync_synced;
             mr_s_valid      <= ~vsync_synced_d1 & vsync_synced;
             if (rst) begin
@@ -285,7 +331,7 @@ module top (
             end
         end
 
-        axis_intf #(24) cc_rgb ();
+        axis_intf #(24, 0) cc_rgb ();
 
         assign cc_rgb.ready = de;
 
@@ -327,10 +373,42 @@ module top (
             .de    (de)
         );
     end
-
+/*
     begin : wrapper_gen
         logic start_d1;
         logic wrapper_s_valid;
+
+        axis_intf #(32, 0) addr_fifo_s ();
+        axis_intf #(32, 0) addr_fifo_m ();
+
+        axis_intf #(64, 1) data_fifo_s ();
+        axis_intf #(64, 1) data_fifo_m ();
+
+        axis_afifo #(
+            .SYNC_STAGES (2),
+            .DEPTH       (4)
+        ) addr_fifo (
+            .s_clk (clk),
+            .s_rst (rst),
+            .m_clk (ddr3_ctrl_clk),
+            .m_rst (ddr3_ctrl_rst),
+
+            .s (addr_fifo_s),
+            .m (addr_fifo_m)
+        );
+
+        axis_afifo #(
+            .SYNC_STAGES (2),
+            .DEPTH       (64)
+        ) data_fifo (
+            .s_clk (clk),
+            .s_rst (rst),
+            .m_clk (ddr3_ctrl_clk),
+            .m_rst (ddr3_ctrl_rst),
+
+            .s (data_fifo_s),
+            .m (data_fifo_m)
+        );
 
         wrapper #(
             .X_RES             (1920),
@@ -339,8 +417,7 @@ module top (
             .NCORES            (NCORES),
             .ARBITER_TREE_SANS (ARBITER_TREE_SANS),
             .BURST_LENGTH      (BURST_LENGTH),
-            .FB_START_ADDR     (0),
-            .AXI_ID            (0)
+            .FB_START_ADDR     (0)
         ) wrapper (
             .clk          (clk),
             .rst          (rst),
@@ -352,9 +429,20 @@ module top (
             .s_center_y   (center_y),
             .s_xy_step    (xy_step),
 
-            .m_axi_mem    (ddr3_axi_16)
+            .m_addr       (addr_fifo_s),
+            .m_data       (data_fifo_s)
         );
 
+        memory_writer #(
+            .BURST_LENGTH (BURST_LENGTH),
+            .AXI_ID       (0)
+        ) memw (
+            .clk    (ddr3_ctrl_clk),
+            .rst    (ddr3_ctrl_rst),
+            .s_addr (addr_fifo_m),
+            .s_data (data_fifo_m),
+            .m      (ddr3_axi_64)
+        );
 
         always_ff @(posedge clk) begin
             start_d1        <= start;
@@ -365,21 +453,21 @@ module top (
             end
         end
     end
+*/
+    // vio_0 vio (
+    //     .clk        (clk),
 
-    vio_0 vio (
-        .clk        (clk),
+    //     .probe_in0  (adv7511_setup_error),
+    //     .probe_in1  (adv7511_setup_done),
+    //     .probe_in2  (ddr3_calib_complete),
 
-        .probe_in0  (adv7511_setup_error),
-        .probe_in1  (adv7511_setup_done),
-        .probe_in2  (ddr3_calib_complete),
-
-        .probe_out0 (vio_rst),
-        .probe_out1 (cc_start_index),
-        .probe_out2 (max_it),
-        .probe_out3 (center_x),
-        .probe_out4 (center_y),
-        .probe_out5 (xy_step),
-        .probe_out6 (start)
-    );
+    //     .probe_out0 (vio_rst),
+    //     .probe_out1 (cc_start_index),
+    //     .probe_out2 (max_it),
+    //     .probe_out3 (center_x),
+    //     .probe_out4 (center_y),
+    //     .probe_out5 (xy_step),
+    //     .probe_out6 (start)
+    // );
 
 endmodule

@@ -13,6 +13,10 @@ module color_converter(
         $error();
     end
 
+    if (s_axis_it.LAST_EN != 0 || m_axis_rgb.LAST_EN != 0) begin
+        $error();
+    end
+
     assign s_axis_it.ready = m_axis_rgb.ready;
 
     always_ff @(posedge clk) begin

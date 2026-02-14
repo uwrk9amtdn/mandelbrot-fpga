@@ -6,6 +6,7 @@ module uberddr3_wrapper_axi #(
     input     rst,
 
     input     ddr3_clk,
+    input     ddr3_clk_90,
     input     ref_clk, // 200 MHz
 
     output    calib_complete,
@@ -27,7 +28,6 @@ module uberddr3_wrapper_axi #(
         $error();
     end
 
-
     if (s_axi.ID_WIDTH < 4) begin
         $error();
     end
@@ -43,7 +43,7 @@ module uberddr3_wrapper_axi #(
         .WB2_ADDR_BITS         (7),
         .WB2_DATA_BITS         (32),
         .MICRON_SIM            (0),
-        .ODELAY_SUPPORTED      (1),
+        .ODELAY_SUPPORTED      (0),
         .SECOND_WISHBONE       (0),
         .WB_ERROR              (0),
         .BIST_MODE             (1),
@@ -55,7 +55,7 @@ module uberddr3_wrapper_axi #(
         .i_controller_clk (clk),
         .i_ddr3_clk       (ddr3_clk),
         .i_ref_clk        (ref_clk),
-        .i_ddr3_clk_90    ('0), // ODELAY_SUPPORTED = 1
+        .i_ddr3_clk_90    (ddr3_clk_90),
         .i_rst_n          (~rst),
 
         .s_axi_awvalid    (s_axi.awvalid),

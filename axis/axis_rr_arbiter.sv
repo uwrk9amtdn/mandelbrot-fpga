@@ -9,6 +9,16 @@ module axis_rr_arbiter #(
     axis_intf m
 );
 
+    if (m.LAST_EN != 1) begin
+        $error();
+    end
+
+    for (genvar i = 0; i < NS; i++) begin
+        if (s[i].DATA_WIDTH != m.DATA_WIDTH || s[i].LAST_EN != 1) begin
+            $error();
+        end
+    end
+
     localparam INDEX_WIDTH = NS > 1 ? $clog2(NS) : 1;
 
     logic                   locked;

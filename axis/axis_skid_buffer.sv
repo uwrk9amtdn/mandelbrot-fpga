@@ -4,6 +4,15 @@ module axis_skid_buffer(
     axis_intf m
 );
 
+    if (s.DATA_WIDTH != m.DATA_WIDTH) begin
+        $error();
+    end
+
+    // TODO: add LAST_EN = 0 support
+    if (s.LAST_EN != 1 || m.LAST_EN != 1) begin
+        $error();
+    end
+
     type(s.data) skid_data;
     logic        skid_last;
     logic        skid_valid;

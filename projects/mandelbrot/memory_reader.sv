@@ -15,23 +15,46 @@ module memory_reader #(
     axis_intf m_axis
 );
 
-    if (m_axi.DATA_WIDTH != 16 || m_axis.DATA_WIDTH != 16) begin
+    if (m_axi.DATA_WIDTH < 16 || m_axi.DATA_WIDTH % 16 != 0) begin
         $error();
     end
 
-    if (COUNT < BURST_LENGTH || COUNT % BURST_LENGTH != 0) begin
+    if (m_axis.DATA_WIDTH != 16 || m_axis.LAST_EN != 0) begin
         $error();
     end
 
-    logic [$clog2(COUNT/BURST_LENGTH)-1:0] ctr;
+    localparam int N = m_axi.DATA_WIDTH / 16;
 
-    assign m_axi.rready  = m_axis.ready;
-    assign m_axis.valid  = m_axi.rvalid;
-    assign m_axis.data   = m_axi.rdata;
+    if (COUNT < (BURST_LENGTH * N) || COUNT % (BURST_LENGTH * N) != 0) begin
+        $error();
+    end
+
+    localparam int NB = COUNT / (BURST_LENGTH * N);
+
+    logic [$clog2(NB)-1:0] ctr;
+
+    axis_intf #(m_axi.DATA_WIDTH, 1) wc_s ();
+    axis_intf #(16, 1) wc_m ();
+
+    assign wc_m.ready   = m_axis.ready;
+    assign m_axis.valid = wc_m.valid;
+    assign m_axis.data  = wc_m.data;
+
+    axis_wc wc (
+        .clk (clk),
+        .rst (rst),
+        .s   (wc_s),
+        .m   (wc_m)
+    );
+
+    assign m_axi.rready = wc_s.ready;
+    assign wc_s.valid   = m_axi.rvalid;
+    assign wc_s.data    = m_axi.rdata;
+    assign wc_s.last    = m_axi.rlast;
 
     assign m_axi.arid    = AXI_ID;
     assign m_axi.arlen   = BURST_LENGTH - 1;
-    assign m_axi.arsize  = 1; // 2 bytes
+    assign m_axi.arsize  = $clog2(m_axi.DATA_WIDTH / 8);
     assign m_axi.arburst = 1; // INCR
     assign m_axi.arlock  = 0;
     assign m_axi.arcache = 0;
@@ -56,9 +79,9 @@ module memory_reader #(
 
             AR: begin
                 if (m_axi.arready & m_axi.arvalid) begin
-                    m_axi.araddr  <= m_axi.araddr + BURST_LENGTH * 2;
+                    m_axi.araddr  <= m_axi.araddr + (BURST_LENGTH * N * 2);
 
-                    if (ctr == (COUNT/BURST_LENGTH) - 1) begin
+                    if (ctr == NB - 1) begin
                         ctr           <= 0;
                         state         <= READY;
                         m_axi.arvalid <= 0;

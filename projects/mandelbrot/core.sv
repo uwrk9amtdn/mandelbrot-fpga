@@ -1,5 +1,3 @@
-import mbrot::*;
-
 module core #(
     FRAC_WIDTH = 8
 )(
@@ -42,8 +40,8 @@ module core #(
         .m_stop (msi_m_stop)
     );
 
+    parameter int N = msi.LATENCY;
     // localparam int N = msi.LATENCY;
-    localparam int N = SI_LATENCY;
 
     // TODO: block ram sentezlenirse calismaz
     (* ram_style = "distributed" *) logic [2:-FRAC_WIDTH] x_mem    [N-1:0];

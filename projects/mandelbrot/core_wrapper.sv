@@ -1,3 +1,5 @@
+import cfg::SI_LATENCY;
+
 // addr[31:16] -> addr[15:0] -> data 0 -> data 1 -> data 2 -> ... -> data N
 module core_wrapper #(
     logic [31:0] START_ADDR  = 0,
@@ -62,7 +64,7 @@ module core_wrapper #(
         .m_it       (core_m_it)
     );
 
-    if (N % core0.N != 0) begin
+    if (N % SI_LATENCY != 0) begin
         $error();
     end
 

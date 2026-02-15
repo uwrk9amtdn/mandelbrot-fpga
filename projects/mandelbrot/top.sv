@@ -30,13 +30,13 @@ module top (
     output [0:0]  ddr3_odt
 );
 
-    localparam int NCORES              = 10;
+    localparam int NCORES              = 54;
     localparam int FRAC_WIDTH          = 16;
     localparam int ARBITER_TREE_SANS   = 4;
     localparam int BURST_LENGTH        = 16;
     localparam int READER_BURST_LENGTH = 32;
 
-    localparam real CLOCK_FREQ = 200.0;
+    localparam real CLOCK_FREQ = 300.0;
 
     logic       sysclk;
 
@@ -373,7 +373,7 @@ module top (
             .de    (de)
         );
     end
-/*
+
     begin : wrapper_gen
         logic start_d1;
         logic wrapper_s_valid;
@@ -453,7 +453,7 @@ module top (
             end
         end
     end
-*/
+
     // vio_0 vio (
     //     .clk        (clk),
 

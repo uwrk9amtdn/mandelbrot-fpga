@@ -1,3 +1,4 @@
+// TODO: cleanup
 module axis_rr_arbiter_tree #(
     int NS   = 5, // total number of slaves
     int SANS = 2  // single arbiter's number of slaves
@@ -36,35 +37,37 @@ module axis_rr_arbiter_tree #(
     localparam D = calc_depth(NS, SANS);
     localparam N = next_multiple(NS, SANS);
 
-    axis_intf #(m.DATA_WIDTH, 1) links [D+1][N]();
+    axis_intf #(m.DATA_WIDTH, 1) links [D+1][N/SANS][SANS]();
 
     for (genvar i = 0; i < N; i++) begin
         if (i < NS) begin
-            assign s[i].ready        = links[0][i].ready;
-            assign links[0][i].valid = s[i].valid;
-            assign links[0][i].data  = s[i].data;
-            assign links[0][i].last  = s[i].last;
+            assign s[i].ready                     = links[0][i/SANS][i%SANS].ready;
+            assign links[0][i/SANS][i%SANS].valid = s[i].valid;
+            assign links[0][i/SANS][i%SANS].data  = s[i].data;
+            assign links[0][i/SANS][i%SANS].last  = s[i].last;
         end else begin
-            assign links[0][i].valid = 0;
+            assign links[0][i/SANS][i%SANS].valid = 0;
+            assign links[0][i/SANS][i%SANS].data  = 0;
+            assign links[0][i/SANS][i%SANS].last  = 0;
         end
     end
 
     for (genvar i = 1; i <= D; i++) begin
-        localparam int number_of_arbiters = next_multiple(NS, SANS**i) / (SANS**i);
+        localparam int NA = next_multiple(NS, SANS**i) / (SANS**i);
         for (genvar j = 0; j < N; j++) begin
-            if (j < number_of_arbiters) begin
+            if (j < NA) begin
                 axis_intf #(m.DATA_WIDTH, 1) arbiter_m();
-                axis_rr_arbiter #(SANS) arbiter (clk, rst, links[i-1][j*SANS+:SANS], arbiter_m);
-                axis_skid_buffer skid_buffer (clk, rst, arbiter_m, links[i][j]);
+                axis_rr_arbiter #(SANS) arbiter (clk, rst, links[i-1][j], arbiter_m);
+                axis_skid_buffer skid_buffer (clk, rst, arbiter_m, links[i][j/SANS][j%SANS]);
             end else begin
-                assign links[i][j].valid = 0;
+                assign links[i][j/SANS][j%SANS].valid = 0;
             end
         end
     end
 
-    assign m.valid              = links[D][0].valid;
-    assign m.data               = links[D][0].data;
-    assign m.last               = links[D][0].last;
-    assign links[D][0].ready    = m.ready;
+    assign m.valid              = links[D][0][0].valid;
+    assign m.data               = links[D][0][0].data;
+    assign m.last               = links[D][0][0].last;
+    assign links[D][0][0].ready = m.ready;
 
 endmodule

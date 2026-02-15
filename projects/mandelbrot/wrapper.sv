@@ -162,6 +162,7 @@ module wrapper #(
 
         end
 
+
         assign s_ready = state == READY;
 
         always_ff @(posedge clk) begin
@@ -205,11 +206,11 @@ module wrapper #(
                     end
 
                     if (top_left_x_valid & top_left_y_valid & core_y_step_valid) begin
-                        state           <= DISPATCH;
-                        core_s_valid[0] <= 1;
-                        ctr             <= 0;
-                        core_s_x        <= top_left_x;
-                        core_s_y        <= top_left_y;
+                        state        <= DISPATCH;
+                        core_s_valid <= 1;
+                        ctr          <= 0;
+                        core_s_x     <= top_left_x;
+                        core_s_y     <= top_left_y;
                     end
 
                 end
@@ -239,6 +240,8 @@ module wrapper #(
             end
 
         end
+
+
     end
 
     begin : master_block
@@ -288,6 +291,7 @@ module wrapper #(
                     if (at_m.ready & at_m.valid) begin
                         m_addr.valid <= 0;
                         m_addr.data  <= {m_addr.data[15:0], at_m.data};
+                        state        <= ADDR2;
                     end
                 end
 
@@ -295,6 +299,7 @@ module wrapper #(
                     if (at_m.ready & at_m.valid) begin
                         m_addr.valid <= 1;
                         m_addr.data  <= {m_addr.data[15:0], at_m.data};
+                        state        <= DATA;
                     end
                 end
 

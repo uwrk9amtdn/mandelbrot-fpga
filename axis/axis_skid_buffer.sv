@@ -13,9 +13,9 @@ module axis_skid_buffer(
         $error();
     end
 
-    type(s.data) skid_data;
-    logic        skid_last;
-    logic        skid_valid;
+    logic [m.DATA_WIDTH-1:0] skid_data;
+    logic                    skid_last;
+    logic                    skid_valid;
 
     always_ff @(posedge clk) begin
 

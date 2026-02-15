@@ -1,57 +1,51 @@
-(* use_dsp = "yes" *) module single_iteration #(
+import cfg::SI_LATENCY;
+
+module single_iteration #(
     FRAC_WIDTH = 32
 )(
     input clk,
 
-    input  signed [2:-FRAC_WIDTH] s_a,
-    input  signed [2:-FRAC_WIDTH] s_b,
-    input  signed [2:-FRAC_WIDTH] s_c,
-    input  signed [2:-FRAC_WIDTH] s_d,
+    input  logic signed [2:-FRAC_WIDTH] s_a,
+    input  logic signed [2:-FRAC_WIDTH] s_b,
+    input  logic signed [2:-FRAC_WIDTH] s_c,
+    input  logic signed [2:-FRAC_WIDTH] s_d,
 
-    output signed [2:-FRAC_WIDTH] m_a,
-    output signed [2:-FRAC_WIDTH] m_b,
-    output                        m_stop
+    output logic signed [2:-FRAC_WIDTH] m_a,
+    output logic signed [2:-FRAC_WIDTH] m_b,
+    output logic                        m_stop
 );
 
-    // localparam LATENCY = 4;
-    parameter LATENCY = 4;
+    localparam L = SI_LATENCY - 2;
 
-    logic signed [2:-FRAC_WIDTH] a_reg    [LATENCY:0];
-    logic signed [2:-FRAC_WIDTH] b_reg    [LATENCY:0];
-    logic                        stop_reg [LATENCY:0];
+    if (SI_LATENCY < 3) begin
+        $error();
+    end
 
     logic signed [5:-2*FRAC_WIDTH] a2;
     logic signed [5:-2*FRAC_WIDTH] b2;
-    logic signed [5:-2*FRAC_WIDTH] a_mul_b;
-    logic signed [6:-2*FRAC_WIDTH] a_mul_b_mul_2;
-    logic signed [6:-2*FRAC_WIDTH] a2_add_b2;
+    logic signed [5:-2*FRAC_WIDTH] ab;
+    logic signed [2:-FRAC_WIDTH]   c;
+    logic signed [2:-FRAC_WIDTH]   d;
 
-    // ignored overflow (m_stop should assert before overflow)
+    mul_dsp #(3+FRAC_WIDTH, L, 1) m0 (clk, s_a, s_a, a2);
+    mul_dsp #(3+FRAC_WIDTH, L, 1) m1 (clk, s_b, s_b, b2);
+    mul_dsp #(3+FRAC_WIDTH, L, 1) m2 (clk, s_a, s_b, ab);
 
-    always_comb begin
-        a2            = s_a * s_a;
-        b2            = s_b * s_b;
-        a_mul_b       = s_a * s_b;
-        a_mul_b_mul_2 = a_mul_b << 1;
-        a2_add_b2     = a2 + b2;
+    delayer #(3+FRAC_WIDTH, L + 1) d0 (clk, s_c, c);
+    delayer #(3+FRAC_WIDTH, L + 1) d1 (clk, s_d, d);
 
-        a_reg    [0] = a2[2:-FRAC_WIDTH] - b2[2:-FRAC_WIDTH] + s_c;
-        b_reg    [0] = a_mul_b_mul_2[2:-FRAC_WIDTH] + s_d;
-        stop_reg [0] = |a2_add_b2[6:2];
-    end
+    logic signed [6:-FRAC_WIDTH] a2_plus_b2;
+    logic signed [6:-FRAC_WIDTH] a2_minus_b2;
+    logic signed [6:-FRAC_WIDTH] ab_times_2;
 
     always_ff @(posedge clk) begin
-        for (int i = 0; i < LATENCY; i++) begin
-            a_reg   [i+1] <= a_reg   [i];
-            b_reg   [i+1] <= b_reg   [i];
-            stop_reg[i+1] <= stop_reg[i];
-        end
+        a2_plus_b2  <= a2[5:-FRAC_WIDTH] + b2[5:-FRAC_WIDTH];
+        a2_minus_b2 <= a2[5:-FRAC_WIDTH] - b2[5:-FRAC_WIDTH];
+        ab_times_2  <= ab[5:-FRAC_WIDTH-1] << 1;
+        m_a         <= a2_minus_b2 + c;
+        m_b         <= ab_times_2 + d;
+        m_stop      <= |a2_plus_b2[6:2];
     end
-
-    assign m_a    = a_reg    [LATENCY];
-    assign m_b    = b_reg    [LATENCY];
-    assign m_stop = stop_reg [LATENCY];
-
 endmodule
 
 /*
@@ -117,13 +111,13 @@ endmodule
     end
 
     always_ff @(posedge clk) begin
-        // 1. We use $signed() to prevent the "Unsigned Slicing Trap"
-        a_stg3 <= $signed(a2_stg2[2:-FRAC_WIDTH]) - $signed(b2_stg2[2:-FRAC_WIDTH]) + c_stg2;
+        // 1. We use signed'() to prevent the "Unsigned Slicing Trap"
+        a_stg3 <= signed'(a2_stg2[2:-FRAC_WIDTH]) - signed'(b2_stg2[2:-FRAC_WIDTH]) + c_stg2;
 
         // 2. We shift the slice index by 1 to effectively multiply by 2
         //    WITHOUT losing the LSB precision bit.
         //    Index 1 corresponds to bit [2] shifted left once.
-        b_stg3 <= $signed(ab_stg2[1:-(FRAC_WIDTH+1)]) + d_stg2;
+        b_stg3 <= signed'(ab_stg2[1:-(FRAC_WIDTH+1)]) + d_stg2;
 
         // 3. Stop logic
         stop_stg3 <= |a2_add_b2_stg2_comb[6:2];

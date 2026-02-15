@@ -24,19 +24,17 @@ module axis_rr_arbiter #(
     logic                   locked;
     logic [INDEX_WIDTH-1:0] index;
 
-    logic        s_ready [NS-1:0];
-    logic        s_valid [NS-1:0];
-    type(m.data) s_data  [NS-1:0];
-    logic        s_last  [NS-1:0];
+    logic                    s_ready [NS-1:0];
+    logic                    s_valid [NS-1:0];
+    logic [m.DATA_WIDTH-1:0] s_data  [NS-1:0];
+    logic                    s_last  [NS-1:0];
 
-    generate
-        for (genvar i = 0; i < NS; i++) begin
-            assign s_valid[i] = s[i].valid;
-            assign s_data[i]  = s[i].data;
-            assign s_last[i]  = s[i].last;
-            assign s[i].ready = s_ready[i];
-        end
-    endgenerate
+    for (genvar i = 0; i < NS; i++) begin
+        assign s_valid[i] = s[i].valid;
+        assign s_data[i]  = s[i].data;
+        assign s_last[i]  = s[i].last;
+        assign s[i].ready = s_ready[i];
+    end
 
     always_comb begin
         m.valid = s_valid [index];

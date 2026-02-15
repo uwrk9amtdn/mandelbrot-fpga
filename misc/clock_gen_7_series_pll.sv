@@ -99,7 +99,11 @@ module clock_gen_7series_pll #(
                     freq_error = (out_freq - OUTPUT_FREQ[i]) / OUTPUT_FREQ[i] * 100.0;
                     if (freq_error < 0) freq_error = -freq_error;
 
-                    phase_error = (out_phase - OUTPUT_PHASE[i]) / OUTPUT_PHASE[i] * 100.0;
+                    if (OUTPUT_PHASE[i] == 0.0)
+                        phase_error = 0;
+                    else
+                        phase_error = (out_phase - OUTPUT_PHASE[i]) / OUTPUT_PHASE[i] * 100.0;
+
                     if (phase_error < 0) phase_error = -phase_error;
 
                     if (freq_error > MAX_FREQ_ERROR[i]) begin

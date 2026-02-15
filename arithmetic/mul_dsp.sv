@@ -1,30 +1,38 @@
+(* use_dsp = "true" *)
 module mul_dsp #(
-    INT_BITS  = 2,
-    FRAC_BITS = 4,
-    LATENCY   = 1
+    int WIDTH   = 8,
+    int LATENCY = 1,
+    bit SIGNED  = 0
 )(
-    input                                         clk,
-    input        signed [INT_BITS:-FRAC_BITS]     a,
-    input        signed [INT_BITS:-FRAC_BITS]     b,
-    output logic signed [2*INT_BITS+1:-FRAC_BITS] q
+    input  logic               clk,
+    input  logic [WIDTH-1:0]   a,
+    input  logic [WIDTH-1:0]   b,
+    output logic [2*WIDTH-1:0] q
 );
 
-    logic signed [2*INT_BITS+1:-FRAC_BITS] q_ [LATENCY:0];
-
-    logic signed [2*INT_BITS+1:-2*FRAC_BITS] a_mul_b;
-
-    always @* begin
-        (* USE_DSP = "TRUE" *) a_mul_b = a * b;
-        q_[0] = a_mul_b[2*INT_BITS+1:-FRAC_BITS];
-        q = q_[LATENCY];
+    if (LATENCY < 2) begin
+        $error();
     end
 
-    genvar i;
+    logic [2*WIDTH-1:0] q_reg [LATENCY-1:0];
 
-    generate
-        for (i = 0; i < LATENCY; i++) begin
-            always @(posedge clk) q_[i+1] <= q_[i];
+    logic [WIDTH-1:0] a_reg;
+    logic [WIDTH-1:0] b_reg;
+
+    if (SIGNED) begin
+        assign q_reg[0] = signed'(a_reg) * signed'(b_reg);
+    end else begin
+        assign q_reg[0] = a_reg * b_reg;;
+    end
+
+    assign q = q_reg[LATENCY-1];
+
+    always_ff @(posedge clk) begin
+        a_reg <= a;
+        b_reg <= b;
+        for (int i = 0; i < LATENCY-1; i++) begin
+            q_reg[i+1] <= q_reg[i];
         end
-    endgenerate
+    end
 
 endmodule

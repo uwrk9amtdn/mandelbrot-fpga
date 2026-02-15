@@ -6,7 +6,7 @@ module sum(
 );
 
     always @(posedge clk) begin
-        q <= $signed(a) + $signed(b);
+        q <= signed'(a) + signed'(b);
     end
 
 endmodule

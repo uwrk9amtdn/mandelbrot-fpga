@@ -1,5 +1,7 @@
 import cfg::SI_LATENCY;
 
+// verilator lint_off UNUSEDSIGNAL
+
 module single_iteration #(
     FRAC_WIDTH = 32
 )(
@@ -145,3 +147,4 @@ endmodule
 
 endmodule
 */
+

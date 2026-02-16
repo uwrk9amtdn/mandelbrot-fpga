@@ -12,8 +12,8 @@ module delayer #(
     assign o = d[DELAY];
 
     always_ff @(posedge clk) begin
-        for (int i = 0; i < DELAY; i++) begin
-            d[i+1] <= d[i];
+        for (int j = 0; j < DELAY; j++) begin
+            d[j+1] <= d[j];
         end
     end
 

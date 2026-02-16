@@ -30,11 +30,11 @@ module top (
     output [0:0]  ddr3_odt
 );
 
-    localparam int NCORES              = 54;
+    localparam int NCORES              = 10;
     localparam int FRAC_WIDTH          = 16;
     localparam int ARBITER_TREE_SANS   = 4;
     localparam int BURST_LENGTH        = 16;
-    localparam int READER_BURST_LENGTH = 32;
+    localparam int READER_BURST_LENGTH = 64;
 
     localparam real CLOCK_FREQ = 300.0;
 
@@ -56,9 +56,10 @@ module top (
         .DATA_WIDTH (64)
     ) ddr3_axi_64 ();
 
-    logic ddr3_calib_complete;
 
     // clk
+    logic                 vio_rst;
+    logic                 ddr3_calib_complete;
     logic [15:0]          max_it;
     logic [2:-FRAC_WIDTH] center_x;
     logic [2:-FRAC_WIDTH] center_y;
@@ -212,6 +213,8 @@ module top (
     end
 
     begin : ddr3_gen
+        logic calib_complete;
+
         ddr3_intf #(
             .DM_BITS  (8),
             .BA_BITS  (3),
@@ -254,7 +257,7 @@ module top (
             .ddr3_clk_90    (ddr3_clk_90),
             .ref_clk        (sysclk), // 200 MHz
 
-            .calib_complete (ddr3_calib_complete),
+            .calib_complete (calib_complete),
 
             .s_axi          (ddr3_axi),
 
@@ -269,6 +272,18 @@ module top (
             .rst (ddr3_ctrl_rst),
             .s   (ddr3_axi_64),
             .m   (ddr3_axi)
+        );
+
+        xpm_cdc_single #(
+            .DEST_SYNC_FF   (4),
+            .INIT_SYNC_FF   (0),
+            .SIM_ASSERT_CHK (0),
+            .SRC_INPUT_REG  (0)
+        ) cc_sync (
+            .dest_out (ddr3_calib_complete),
+            .dest_clk (clk),
+            .src_clk  (ddr3_ctrl_clk),
+            .src_in   (calib_complete)
         );
     end
 
@@ -454,20 +469,24 @@ module top (
         end
     end
 
-    // vio_0 vio (
-    //     .clk        (clk),
+    vio_0 vio0 (
+        .clk        (clk),
 
-    //     .probe_in0  (adv7511_setup_error),
-    //     .probe_in1  (adv7511_setup_done),
-    //     .probe_in2  (ddr3_calib_complete),
+        .probe_in0  (adv7511_setup_error),
+        .probe_in1  (adv7511_setup_done),
+        .probe_in2  (ddr3_calib_complete),
 
-    //     .probe_out0 (vio_rst),
-    //     .probe_out1 (cc_start_index),
-    //     .probe_out2 (max_it),
-    //     .probe_out3 (center_x),
-    //     .probe_out4 (center_y),
-    //     .probe_out5 (xy_step),
-    //     .probe_out6 (start)
-    // );
+        .probe_out0 (vio_rst),
+        .probe_out1 (max_it),
+        .probe_out2 (center_x),
+        .probe_out3 (center_y),
+        .probe_out4 (xy_step),
+        .probe_out5 (start)
+    );
+
+    vio_1 vio1 (
+        .clk        (pixel_clk),
+        .probe_out0 (cc_start_index)
+    );
 
 endmodule

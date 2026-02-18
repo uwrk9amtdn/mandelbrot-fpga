@@ -5,8 +5,9 @@ create_project hdmi_test . -part $part -force
 set design_files {
     ../top.sv
     ../../../axis/axis_intf.sv
-    ../../../axis/axis_cdc_handshake.sv
     ../../../misc/cdc_single.sv
+    ../../../misc/cdc_handshake.sv
+    ../../../misc/cdc_multi.sv
     ../../../hdmi/ac701_adv7511_setup.sv
     ../../../hdmi/display_driver.sv
     ../../../i2c/i2c_bit_ctrl.sv

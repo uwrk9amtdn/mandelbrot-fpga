@@ -137,45 +137,24 @@ module top(
 
         logic [23:0] rgb;
 
-        axis_intf #(24, 0) c0_intf ();
-        axis_intf #(24, 0) c1_intf ();
-        axis_intf #(24, 0) c2_intf ();
-        axis_intf #(24, 0) c3_intf ();
+        logic [23:0] c0_synced;
+        logic [23:0] c1_synced;
+        logic [23:0] c2_synced;
+        logic [23:0] c3_synced;
 
-        axis_intf #(24, 0) c0_synced_intf ();
-        axis_intf #(24, 0) c1_synced_intf ();
-        axis_intf #(24, 0) c2_synced_intf ();
-        axis_intf #(24, 0) c3_synced_intf ();
-
-        // TODO: changing data while valid = 1 is against axi rules but works in axi_cdc_handshake
-        assign c0_intf.data = c0;
-        assign c1_intf.data = c1;
-        assign c2_intf.data = c2;
-        assign c3_intf.data = c3;
-
-        assign c0_intf.valid = 1;
-        assign c1_intf.valid = 1;
-        assign c2_intf.valid = 1;
-        assign c3_intf.valid = 1;
-
-        assign c0_synced_intf.ready = 1;
-        assign c1_synced_intf.ready = 1;
-        assign c2_synced_intf.ready = 1;
-        assign c3_synced_intf.ready = 1;
-
-        axis_cdc_handshake #(4) c0_cdc (clk, rst, pixel_clk, 0, c0_intf, c0_synced_intf);
-        axis_cdc_handshake #(4) c1_cdc (clk, rst, pixel_clk, 0, c1_intf, c1_synced_intf);
-        axis_cdc_handshake #(4) c2_cdc (clk, rst, pixel_clk, 0, c2_intf, c2_synced_intf);
-        axis_cdc_handshake #(4) c3_cdc (clk, rst, pixel_clk, 0, c3_intf, c3_synced_intf);
+        cdc_multi #(4, 24) c0_cdc (clk, pixel_clk, c0, c0_synced);
+        cdc_multi #(4, 24) c1_cdc (clk, pixel_clk, c1, c1_synced);
+        cdc_multi #(4, 24) c2_cdc (clk, pixel_clk, c2, c2_synced);
+        cdc_multi #(4, 24) c3_cdc (clk, pixel_clk, c3, c3_synced);
 
         logic [31:0] y;
 
         always_comb begin
             case (y[5:4])
-                2'b00: rgb = c0_synced_intf.data;
-                2'b01: rgb = c1_synced_intf.data;
-                2'b10: rgb = c2_synced_intf.data;
-                2'b11: rgb = c3_synced_intf.data;
+                2'b00: rgb = c0_synced;
+                2'b01: rgb = c1_synced;
+                2'b10: rgb = c2_synced;
+                2'b11: rgb = c3_synced;
             endcase
         end
 

@@ -1,3 +1,5 @@
+/*
+
 module axis_cdc_handshake #(
     int SYNC_STAGES = 4
 )(
@@ -40,7 +42,7 @@ module axis_cdc_handshake #(
         .o   (s_ack)
     );
 
-    assign s.ready = ~s_req & ~s_ack;
+    assign s.ready = ~s_req & ~s_ack & ~s_rst;
 
     always_ff @(posedge s_clk) begin
         if (s.ready & s.valid) begin
@@ -79,7 +81,9 @@ module axis_cdc_handshake #(
 
 endmodule
 
-module axis_cdc_handshake_ #(
+*/
+
+module axis_cdc_handshake #(
     int SYNC_STAGES = 4
 )(
     input     s_clk,
@@ -121,7 +125,7 @@ module axis_cdc_handshake_ #(
         .src_send  (s_req)
     );
 
-    assign s.ready = ~s_req & ~s_ack;
+    assign s.ready = ~s_req & ~s_ack & ~s_rst;
 
     always_ff @(posedge s_clk) begin
         if (s.ready & s.valid) begin

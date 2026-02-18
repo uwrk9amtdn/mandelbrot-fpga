@@ -7,7 +7,6 @@ module uberddr3_wrapper_axi #(
 
     input     ddr3_clk,
     input     ddr3_clk_90,
-    input     ref_clk, // 200 MHz
 
     output    calib_complete,
 
@@ -54,7 +53,7 @@ module uberddr3_wrapper_axi #(
     ) ddr3_top_axi_0 (
         .i_controller_clk (clk),
         .i_ddr3_clk       (ddr3_clk),
-        .i_ref_clk        (ref_clk),
+        .i_ref_clk        ('0),
         .i_ddr3_clk_90    (ddr3_clk_90),
         .i_rst_n          (~rst),
 

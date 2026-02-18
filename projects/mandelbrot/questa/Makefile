@@ -23,6 +23,7 @@ SOURCES := \
 	$(TOP_DIR)/third_party/verilog-axi/rtl/axi_adapter_rd.v     \
 	$(TOP_DIR)/third_party/verilog-axi/rtl/axi_adapter_wr.v     \
 	$(TOP_DIR)/third_party/verilog-axis/rtl/axis_adapter.v      \
+	$(TOP_DIR)/projects/mandelbrot/cfg.sv                       \
 	$(TOP_DIR)/projects/mandelbrot/tb.sv                        \
 	$(TOP_DIR)/projects/mandelbrot/top.sv                       \
 	$(TOP_DIR)/projects/mandelbrot/color_converter.sv           \

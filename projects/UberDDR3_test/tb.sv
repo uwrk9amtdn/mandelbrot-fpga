@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 module tb;
 
     wire [63:0] ddr3_dq;
@@ -46,7 +48,7 @@ module tb;
         clk_p = 1;
         clk_n = 0;
         forever begin
-            #5;
+            #2.5;
             clk_p <= ~clk_p;
             clk_n <= ~clk_n;
         end

@@ -1,12 +1,14 @@
 module uberddr3_wrapper_axi #(
     CLK_PERIOD_PS      = 12_000,
-    DDR3_CLK_PERIOD_PS = 3_000
+    DDR3_CLK_PERIOD_PS = 3_000,
+    MICRON_SIM         = 0
 )(
     input     clk,
     input     rst,
 
     input     ddr3_clk,
     input     ddr3_clk_90,
+    input     ref_clk, // 200 MHz
 
     output    calib_complete,
 
@@ -41,7 +43,7 @@ module uberddr3_wrapper_axi #(
         .AXI_ID_WIDTH          (s_axi.ID_WIDTH),
         .WB2_ADDR_BITS         (7),
         .WB2_DATA_BITS         (32),
-        .MICRON_SIM            (0),
+        .MICRON_SIM            (MICRON_SIM),
         .ODELAY_SUPPORTED      (0),
         .SECOND_WISHBONE       (0),
         .WB_ERROR              (0),
@@ -53,7 +55,7 @@ module uberddr3_wrapper_axi #(
     ) ddr3_top_axi_0 (
         .i_controller_clk (clk),
         .i_ddr3_clk       (ddr3_clk),
-        .i_ref_clk        ('0),
+        .i_ref_clk        (ref_clk),
         .i_ddr3_clk_90    (ddr3_clk_90),
         .i_rst_n          (~rst),
 

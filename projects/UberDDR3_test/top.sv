@@ -28,6 +28,7 @@ module top(
 
     logic ddr3_clk;
     logic ddr3_clk_90;
+    logic ddr3_ref_clk;
 
     axi_intf #(
         .ID_WIDTH   (4),
@@ -52,8 +53,8 @@ module top(
         clock_gen_7series_pll #(
             .N               (3),
             .INPUT_FREQ      (200.0),
-            .OUTPUT_FREQ     ('{100.0, 400.0, 400.0}),
-            .OUTPUT_PHASE    ('{0.0, 0.0, 90.0}),
+            .OUTPUT_FREQ     ('{100.0, 400.0, 400.0, 200.0}),
+            .OUTPUT_PHASE    ('{0.0, 0.0, 90.0, 0.0}),
             .MAX_FREQ_ERROR  ('{default:0.0}),
             .MAX_PHASE_ERROR ('{default:0.0}),
             .VCO_MIN         (800.0),
@@ -62,25 +63,14 @@ module top(
             .PFD_MAX         (500.0)  // speed grade -2
         ) clk_gen0 (
             .clk_in    (clk),
-            .clk_out   ({ddr3_ctrl_clk, ddr3_clk, ddr3_clk_90}),
+            .clk_out   ({ddr3_ctrl_clk, ddr3_clk, ddr3_clk_90, ddr3_ref_clk}),
             .reset     ('0),
             .locked    ()
         );
     end
 
     begin : rst_block
-        logic [3:0] ctr;
-        initial begin
-            ctr <= 0;
-            rst <= 1;
-        end
-
-        always @(posedge clk) begin
-            if (ctr != 4'hf) begin
-                ctr <= ctr + 1;
-                rst <= 0;
-            end
-        end
+        power_on_reset(ddr3_clk, ddr3_clk_rst);
     end
 
     begin : ddr3_block
@@ -113,13 +103,15 @@ module top(
 
         uberddr3_wrapper_axi #(
             .CLK_PERIOD_PS      (10000),
-            .DDR3_CLK_PERIOD_PS (2500)
+            .DDR3_CLK_PERIOD_PS (2500),
+            .MICRON_SIM         (1)
         ) uberddr3 (
             .clk            (ddr3_ctrl_clk),
             .rst            (ddr3_ctrl_rst),
 
             .ddr3_clk       (ddr3_clk),
             .ddr3_clk_90    (ddr3_clk_90),
+            .ref_clk        (ddr3_ref_clk),`
 
             .calib_complete (calib_complete),
 

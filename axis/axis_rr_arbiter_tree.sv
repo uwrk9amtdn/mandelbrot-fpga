@@ -1,4 +1,3 @@
-// TODO: cleanup
 module axis_rr_arbiter_tree #(
     int NS   = 5, // total number of slaves
     int SANS = 2  // single arbiter's number of slaves
@@ -37,18 +36,19 @@ module axis_rr_arbiter_tree #(
     localparam D = calc_depth(NS, SANS);
     localparam N = next_multiple(NS, SANS);
 
-    axis_intf #(m.DATA_WIDTH, 1) links [D+1][N/SANS][SANS]();
+    // verilator does not support multidimensional interface arrays
+    axis_intf #(m.DATA_WIDTH, 1) links [(D+1)*N]();
 
     for (genvar i = 0; i < N; i++) begin
         if (i < NS) begin
-            assign s[i].ready                     = links[0][i/SANS][i%SANS].ready;
-            assign links[0][i/SANS][i%SANS].valid = s[i].valid;
-            assign links[0][i/SANS][i%SANS].data  = s[i].data;
-            assign links[0][i/SANS][i%SANS].last  = s[i].last;
+            assign s[i].ready     = links[i].ready;
+            assign links[i].valid = s[i].valid;
+            assign links[i].data  = s[i].data;
+            assign links[i].last  = s[i].last;
         end else begin
-            assign links[0][i/SANS][i%SANS].valid = 0;
-            assign links[0][i/SANS][i%SANS].data  = 0;
-            assign links[0][i/SANS][i%SANS].last  = 0;
+            assign links[i].valid = 0;
+            assign links[i].data  = 0;
+            assign links[i].last  = 0;
         end
     end
 
@@ -56,18 +56,22 @@ module axis_rr_arbiter_tree #(
         localparam int NA = next_multiple(NS, SANS**i) / (SANS**i);
         for (genvar j = 0; j < N; j++) begin
             if (j < NA) begin
+                axis_intf #(m.DATA_WIDTH, 1) arbiter_s[SANS]();
                 axis_intf #(m.DATA_WIDTH, 1) arbiter_m();
-                axis_rr_arbiter #(SANS) arbiter (clk, rst, links[i-1][j], arbiter_m);
-                axis_skid_buffer skid_buffer (clk, rst, arbiter_m, links[i][j/SANS][j%SANS]);
+                for (genvar k = 0; k < SANS; k++) begin
+                    axis_intf_connect con(links[(i-1)*N+j*SANS+k], arbiter_s[k]);
+                end
+                axis_rr_arbiter #(SANS) arbiter (clk, rst, arbiter_s, arbiter_m);
+                axis_skid_buffer skid_buffer (clk, rst, arbiter_m, links[i*N+j]);
             end else begin
-                assign links[i][j/SANS][j%SANS].valid = 0;
+                assign links[i*N+j].valid = 0;
             end
         end
     end
 
-    assign m.valid              = links[D][0][0].valid;
-    assign m.data               = links[D][0][0].data;
-    assign m.last               = links[D][0][0].last;
-    assign links[D][0][0].ready = m.ready;
+    assign m.valid            = links[D*N+0].valid;
+    assign m.data             = links[D*N+0].data;
+    assign m.last             = links[D*N+0].last;
+    assign links[D*N+0].ready = m.ready;
 
 endmodule

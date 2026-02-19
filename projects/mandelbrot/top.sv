@@ -30,10 +30,14 @@ module top (
     output [0:0]  ddr3_odt
 );
 
+    `ifndef SYNTHESIS
+        `define MICRON_SIM 1
+    `endif
+
     localparam int NCORES              = 10;
     localparam int FRAC_WIDTH          = 16;
     localparam int ARBITER_TREE_SANS   = 4;
-    localparam int BURST_LENGTH        = 16;
+    localparam int BURST_LENGTH        = 32;
     localparam int READER_BURST_LENGTH = 64;
 
     localparam real CLOCK_FREQ = 100.0;
@@ -228,7 +232,7 @@ module top (
         uberddr3_wrapper_axi #(
             .CLK_PERIOD_PS      (10000),
             .DDR3_CLK_PERIOD_PS (2500),
-            .MICRON_SIM         (0)
+            .MICRON_SIM         (`MICRON_SIM)
         ) uberddr3 (
             .clk            (ddr3_ctrl_clk),
             .rst            (ddr3_ctrl_rst),

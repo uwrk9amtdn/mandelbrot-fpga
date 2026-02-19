@@ -28,7 +28,7 @@ module axis_skid_buffer(
                 m.data     <= skid_data;
                 m.last     <= skid_last;
             end else begin
-                m.valid <= s.valid;
+                m.valid <= s.valid & s.ready;
                 m.data  <= s.data;
                 m.last  <= s.last;
             end

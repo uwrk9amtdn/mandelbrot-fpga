@@ -53,7 +53,7 @@ module cdc_handshake #(
             s_req <= 0;
         end
         if (s_rst) begin
-            s_req   <= 0;
+            s_req <= 0;
         end
     end
 

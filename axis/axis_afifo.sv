@@ -27,6 +27,7 @@ module axis_afifo #(
 
     logic [WIDTH-1:0] i_wr_data;
     logic [WIDTH-1:0] o_rd_data;
+    logic [WIDTH-1:0] o_rd_data_reg;
     logic             o_wr_full;
     logic             o_rd_empty;
     logic             i_rd;
@@ -34,10 +35,10 @@ module axis_afifo #(
 
     if (s.LAST_EN) begin
         assign i_wr_data        = {s.last, s.data};
-        assign {m.last, m.data} = o_rd_data;
+        assign {m.last, m.data} = o_rd_data_reg;
     end else begin
         assign i_wr_data = s.data;
-        assign m.data    = o_rd_data;
+        assign m.data    = o_rd_data_reg;
     end
 
     assign s.ready = ~o_wr_full;
@@ -67,7 +68,8 @@ module axis_afifo #(
 
     always_ff @(posedge m_clk) begin
         if (m.ready | ~m.valid) begin
-            m.valid <= i_rd;
+            m.valid       <= i_rd;
+            o_rd_data_reg <= o_rd_data;
         end
 
         if (m_rst) begin

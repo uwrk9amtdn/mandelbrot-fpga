@@ -86,9 +86,6 @@ set_property PACKAGE_PIN K25     [get_ports sda]
 set_property IOSTANDARD LVCMOS33 [get_ports sda]
 
 ## DDR3
-set_property IO_BUFFER_TYPE NONE [get_ports {ddr3_ck_n[*]} ]
-set_property IO_BUFFER_TYPE NONE [get_ports {ddr3_ck_p[*]} ]
-
 set_property SLEW FAST                   [get_ports {ddr3_dq[0]}]
 set_property IN_TERM UNTUNED_SPLIT_50    [get_ports {ddr3_dq[0]}]
 set_property IOSTANDARD SSTL15           [get_ports {ddr3_dq[0]}]

@@ -1,14 +1,13 @@
 `timescale 1ns/1ps
 
 module tb;
-    logic clk_p;
-    logic clk_n;
+    logic       clk_p;
+    logic       clk_n;
 
-    wire sda;
-    wire scl;
+    wire        sda;
+    wire        scl;
 
     logic       pixel_clk;
-
     logic [7:0] r;
     logic [7:0] g;
     logic [7:0] b;
@@ -16,41 +15,47 @@ module tb;
     logic       vsync;
     logic       de;
 
+    wire [63:0] ddr3_dq;
+    wire [7:0]  ddr3_dqs_n;
+    wire [7:0]  ddr3_dqs_p;
+    wire [13:0] ddr3_addr;
+    wire [2:0]  ddr3_ba;
+    wire        ddr3_ras_n;
+    wire        ddr3_cas_n;
+    wire        ddr3_we_n;
+    wire        ddr3_reset_n;
+    wire [0:0]  ddr3_ck_p;
+    wire [0:0]  ddr3_ck_n;
+    wire [0:0]  ddr3_cke;
+    wire [0:0]  ddr3_cs_n;
+    wire [7:0]  ddr3_dm;
+    wire [0:0]  ddr3_odt;
+
     pullup(sda);
     pullup(scl);
 
-    top top (
-        .clk_p         (clk_p), // 200 MHz
-        .clk_n         (clk_n),
+    top top (.*);
 
-        .sda           (sda),
-        .scl           (scl),
-
-        .pixel_clk     (pixel_clk),
-        .r             (r),
-        .g             (g),
-        .b             (b),
-        .hsync         (hsync),
-        .vsync         (vsync),
-        .de            (de),
-
-        .ddr3_dq       (),
-        .ddr3_dqs_n    (),
-        .ddr3_dqs_p    (),
-        .ddr3_addr     (),
-        .ddr3_ba       (),
-        .ddr3_ras_n    (),
-        .ddr3_cas_n    (),
-        .ddr3_we_n     (),
-        .ddr3_reset_n  (),
-        .ddr3_ck_p     (),
-        .ddr3_ck_n     (),
-        .ddr3_cke      (),
-        .ddr3_cs_n     (),
-        .ddr3_dm       (),
-        .ddr3_odt      ()
-    );
-
+    for (genvar i = 0; i < 64 / 8; i++) begin: mem_gen
+        ddr3_model ddr3_model(
+            .rst_n   (ddr3_reset_n),
+            .ck      (ddr3_ck_p),
+            .ck_n    (ddr3_ck_n),
+            .cke     (ddr3_cke),
+            .cs_n    (ddr3_cs_n),
+            .ras_n   (ddr3_ras_n),
+            .cas_n   (ddr3_cas_n),
+            .we_n    (ddr3_we_n),
+            .dm_tdqs (ddr3_dm[i]),
+            .ba      (ddr3_ba),
+            .addr    (ddr3_addr),
+            .dq      (ddr3_dq[i*8+:8]),
+            .dqs     (ddr3_dqs_p[i]),
+            .dqs_n   (ddr3_dqs_n[i]),
+            .tdqs_n  (),
+            .odt     (ddr3_odt)
+        );
+    end
 
     initial begin
         clk_p = 1;

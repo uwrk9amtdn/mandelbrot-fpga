@@ -49,8 +49,8 @@ module axis_rr_arbiter #(
 
     always_ff @(posedge clk) begin
 
-        if (m.valid & m.ready) begin
-            locked <= ~m.last;
+        if (m.valid) begin
+            locked <= ~(m.ready & m.last);
         end
 
         if ((~m.valid & ~locked) | (m.valid & m.ready & m.last)) begin

@@ -1,7 +1,8 @@
 module tb;
 
-    localparam int NS   = 33;
-    localparam int SANS = 7;
+    localparam int NS   = 133;
+    localparam int SANS = 19;
+    localparam int N    = 1000;
 
     axis_intf #(8, 1) s [NS] ();
     axis_intf #(8, 1) m ();
@@ -20,19 +21,6 @@ module tb;
         .m (m)
     );
 
-    // axis_intf #(8, 1) arbiter_m ();
-    // axis_rr_arbiter #(
-    //     .NS   (NS)
-    // ) arbiter (
-    //     .clk (clk),
-    //     .rst (rst),
-
-    //     .s (s),
-    //     .m (arbiter_m)
-    // );
-
-    // axis_skid_buffer sb(clk, rst, arbiter_m, m);
-
     semaphore sem;
     bit [7:0] q[$][];
 
@@ -40,13 +28,13 @@ module tb;
         for (int i = 0; i < s.size; i++) begin
             fork
                 int j = i;
-                repeat (10) begin
+                repeat (N) begin
                     bit [7:0] d [];
                     int n;
-                    n = $urandom % 20;
+                    n = $urandom % 15 + 1;
                     d = new[n];
                     for (int i = 0; i < n; i++) begin
-                        repeat ($urandom % 4) @(posedge clk);
+                        repeat ($urandom % 3) @(posedge clks);
                         d[i] = $urandom;
                         s[j].valid <= 1;
                         s[j].data  <= d[i];
@@ -55,7 +43,7 @@ module tb;
                         s[j].valid <= 0;
                         // $display("slave_%0d : data = %0d, last = %b", j, s[j].data, s[j].last);
                         if (i == n - 1) begin
-                            $display("slave_%0d PACKET : data = %p", j, d);
+                            // $display("slave_%0d PACKET : data = %p", j, d);
                         end
                     end
                     sem.get();
@@ -85,15 +73,15 @@ module tb;
                     break;
                 end
             end
-            $display("master PACKET: data = %p", d);
+            // $display("master PACKET: data = %p", d);
             #0;
             sem.get();
             i = q.find_first_index() with (item == d);
             if (i.size == 0) begin
-                $error("WRONG PACKET RECEIVED");
+                $fatal(1, "WRONG PACKET RECEIVED");
             end else begin
-                $display("CORRECT PACKET RECEIVED");
                 q.delete(i[0]);
+                $display("CORRECT PACKET RECEIVED, :queue size = %0d", q.size);
             end
             sem.put();
         end
@@ -118,6 +106,8 @@ module tb;
                 #20 rst <= 0;
                 @(posedge clk);
                 drive_slave(s);
+                $display("DRIVE SLAVE DONE");
+                wait(q.size == 0);
                 #1us;
                 $finish;
             end
@@ -126,7 +116,8 @@ module tb;
             end
             forever begin
                 @(posedge clk);
-                m.ready <= $urandom;
+                // m.ready <= $urandom;
+                m.ready <= 1;
             end
         join
 

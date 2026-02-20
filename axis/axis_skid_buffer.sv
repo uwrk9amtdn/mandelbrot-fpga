@@ -17,10 +17,9 @@ module axis_skid_buffer(
     logic                    skid_last;
     logic                    skid_valid;
 
+    assign s.ready = ~skid_valid;
+
     always_ff @(posedge clk) begin
-
-        s.ready <= m.ready;
-
         if (m.ready | ~m.valid) begin
             if (skid_valid) begin
                 skid_valid <= 0;
@@ -28,7 +27,7 @@ module axis_skid_buffer(
                 m.data     <= skid_data;
                 m.last     <= skid_last;
             end else begin
-                m.valid <= s.valid & s.ready;
+                m.valid <= s.valid;
                 m.data  <= s.data;
                 m.last  <= s.last;
             end
@@ -42,7 +41,6 @@ module axis_skid_buffer(
 
         if (rst) begin
             skid_valid <= 0;
-            s.ready    <= 0;
             m.valid    <= 0;
         end
     end

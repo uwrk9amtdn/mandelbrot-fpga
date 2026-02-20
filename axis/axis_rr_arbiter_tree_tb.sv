@@ -34,7 +34,7 @@ module tb;
                     n = $urandom % 15 + 1;
                     d = new[n];
                     for (int i = 0; i < n; i++) begin
-                        repeat ($urandom % 3) @(posedge clks);
+                        repeat ($urandom % 3) @(posedge clk);
                         d[i] = $urandom;
                         s[j].valid <= 1;
                         s[j].data  <= d[i];

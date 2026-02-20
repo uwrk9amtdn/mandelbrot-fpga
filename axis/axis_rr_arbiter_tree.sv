@@ -65,6 +65,8 @@ module axis_rr_arbiter_tree #(
                 axis_skid_buffer skid_buffer (clk, rst, arbiter_m, links[i*N+j]);
             end else begin
                 assign links[i*N+j].valid = 0;
+                assign links[i*N+j].data  = 0;
+                assign links[i*N+j].last  = 0;
             end
         end
     end

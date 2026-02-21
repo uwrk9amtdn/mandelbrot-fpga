@@ -18,6 +18,7 @@ SOURCES := \
 	../../../memory_controllers/ddr3_intf.sv                  \
 	../../../memory_controllers/uberddr3_wrapper_axi.sv       \
 	../../../axis/axis_intf.sv                                \
+	../../../axis/axis_intf_connect.sv                        \
 	../../../axis/axis_wc.sv                                  \
 	../../../axis/axis_afifo.sv                               \
 	../../../axis/axis_rr_arbiter.sv                          \
@@ -46,11 +47,11 @@ SOURCES := \
     ../../../third_party/UberDDR3/rtl/axi/sfifo.v             \
     ../../../third_party/UberDDR3/rtl/axi/skidbuffer.v        \
     ../../../third_party/UberDDR3/rtl/axi/wbarbiter.v         \
-	../../../third_party/verilog-axi/rtl/axi_adapter.v        \
-	../../../third_party/verilog-axi/rtl/axi_adapter_rd.v     \
-	../../../third_party/verilog-axi/rtl/axi_adapter_wr.v     \
-	../../../third_party/verilog-axis/rtl/axis_adapter.v      \
-	../../../third_party/wb2axip/rtl/afifo.v
+    ../../../third_party/verilog-axi/rtl/axi_adapter.v        \
+    ../../../third_party/verilog-axi/rtl/axi_adapter_rd.v     \
+    ../../../third_party/verilog-axi/rtl/axi_adapter_wr.v     \
+    ../../../third_party/verilog-axis/rtl/axis_adapter.v      \
+    ../../../third_party/wb2axip/rtl/afifo.v
 
 rtl: .rtl.timestamp
 

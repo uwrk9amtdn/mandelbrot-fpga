@@ -36,7 +36,7 @@ module axis_rr_arbiter_tree #(
     localparam D = calc_depth(NS, SANS);
     localparam N = next_multiple(NS, SANS);
 
-    // verilator does not support multidimensional interface arrays
+    // verilato r does not support multidimensional interface arrays
     axis_intf #(m.DATA_WIDTH, 1) links [(D+1)*N]();
 
     for (genvar i = 0; i < N; i++) begin

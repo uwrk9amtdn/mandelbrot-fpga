@@ -27,6 +27,8 @@ set design_files {
     ../../../i2c/i2c_byte_ctrl.sv
     ../../../misc/clock_gen_7_series_pll.sv
     ../../../misc/cdc_single.sv
+    ../../../misc/cdc_multi.sv
+    ../../../misc/cdc_handshake.sv
     ../../../misc/power_on_reset.sv
     ../../../misc/delayer.sv
     ../../../misc/rise_detector.sv

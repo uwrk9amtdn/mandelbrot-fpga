@@ -1,0 +1,793 @@
+{
+    "ltx_root": {
+        "version": 4,
+        "minor": 0,
+        "ltx_data": [
+            {
+                "name": "EDA_PROBESET",
+                "active": true,
+                "debug_cores": [
+                    {
+                        "type": "XSDB_V3",
+                        "name": "dbg_hub",
+                        "spec": "labtools_xsdbm_v3",
+                        "clk_input_freq_hz": "100000000"
+                    },
+                    {
+                        "type": "VIO_V2",
+                        "name": "vio_block.vio0",
+                        "spec": "labtools_vio_v3",
+                        "ipName": "vio",
+                        "core_location": {
+                            "user_chain": 1,
+                            "slave_index": 0,
+                            "bscan_switch_index": 0
+                        },
+                        "uuid": "9E8AA6824C8A5E48976227628216DD82",
+                        "pins": [
+                            {
+                                "name": "probe_in0",
+                                "id": 0,
+                                "type": "DATA",
+                                "direction": "IN",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 0,
+                                "nets": [
+                                    {
+                                        "name": "adv7511_setup_error",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_in1",
+                                "id": 1,
+                                "type": "DATA",
+                                "direction": "IN",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 1,
+                                "nets": [
+                                    {
+                                        "name": "adv7511_setup_done",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_in2",
+                                "id": 2,
+                                "type": "DATA",
+                                "direction": "IN",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 2,
+                                "nets": [
+                                    {
+                                        "name": "ddr3_calib_complete",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_in3",
+                                "id": 3,
+                                "type": "DATA",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 18,
+                                "portIndex": 3,
+                                "nets": [
+                                    {
+                                        "name": "center_x",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "center_x[2]"
+                                            },
+                                            {
+                                                "name": "center_x[1]"
+                                            },
+                                            {
+                                                "name": "center_x[0]"
+                                            },
+                                            {
+                                                "name": "center_x[-1]"
+                                            },
+                                            {
+                                                "name": "center_x[-2]"
+                                            },
+                                            {
+                                                "name": "center_x[-3]"
+                                            },
+                                            {
+                                                "name": "center_x[-4]"
+                                            },
+                                            {
+                                                "name": "center_x[-5]"
+                                            },
+                                            {
+                                                "name": "center_x[-6]"
+                                            },
+                                            {
+                                                "name": "center_x[-7]"
+                                            },
+                                            {
+                                                "name": "center_x[-8]"
+                                            },
+                                            {
+                                                "name": "center_x[-9]"
+                                            },
+                                            {
+                                                "name": "center_x[-10]"
+                                            },
+                                            {
+                                                "name": "center_x[-11]"
+                                            },
+                                            {
+                                                "name": "center_x[-12]"
+                                            },
+                                            {
+                                                "name": "center_x[-13]"
+                                            },
+                                            {
+                                                "name": "center_x[-14]"
+                                            },
+                                            {
+                                                "name": "center_x[-15]"
+                                            },
+                                            {
+                                                "name": "center_x[-16]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_in4",
+                                "id": 4,
+                                "type": "DATA",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 18,
+                                "portIndex": 4,
+                                "nets": [
+                                    {
+                                        "name": "center_y",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "center_y[2]"
+                                            },
+                                            {
+                                                "name": "center_y[1]"
+                                            },
+                                            {
+                                                "name": "center_y[0]"
+                                            },
+                                            {
+                                                "name": "center_y[-1]"
+                                            },
+                                            {
+                                                "name": "center_y[-2]"
+                                            },
+                                            {
+                                                "name": "center_y[-3]"
+                                            },
+                                            {
+                                                "name": "center_y[-4]"
+                                            },
+                                            {
+                                                "name": "center_y[-5]"
+                                            },
+                                            {
+                                                "name": "center_y[-6]"
+                                            },
+                                            {
+                                                "name": "center_y[-7]"
+                                            },
+                                            {
+                                                "name": "center_y[-8]"
+                                            },
+                                            {
+                                                "name": "center_y[-9]"
+                                            },
+                                            {
+                                                "name": "center_y[-10]"
+                                            },
+                                            {
+                                                "name": "center_y[-11]"
+                                            },
+                                            {
+                                                "name": "center_y[-12]"
+                                            },
+                                            {
+                                                "name": "center_y[-13]"
+                                            },
+                                            {
+                                                "name": "center_y[-14]"
+                                            },
+                                            {
+                                                "name": "center_y[-15]"
+                                            },
+                                            {
+                                                "name": "center_y[-16]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_in5",
+                                "id": 5,
+                                "type": "DATA",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 18,
+                                "portIndex": 5,
+                                "nets": [
+                                    {
+                                        "name": "xy_step",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "xy_step[2]"
+                                            },
+                                            {
+                                                "name": "xy_step[1]"
+                                            },
+                                            {
+                                                "name": "xy_step[0]"
+                                            },
+                                            {
+                                                "name": "xy_step[-1]"
+                                            },
+                                            {
+                                                "name": "xy_step[-2]"
+                                            },
+                                            {
+                                                "name": "xy_step[-3]"
+                                            },
+                                            {
+                                                "name": "xy_step[-4]"
+                                            },
+                                            {
+                                                "name": "xy_step[-5]"
+                                            },
+                                            {
+                                                "name": "xy_step[-6]"
+                                            },
+                                            {
+                                                "name": "xy_step[-7]"
+                                            },
+                                            {
+                                                "name": "xy_step[-8]"
+                                            },
+                                            {
+                                                "name": "xy_step[-9]"
+                                            },
+                                            {
+                                                "name": "xy_step[-10]"
+                                            },
+                                            {
+                                                "name": "xy_step[-11]"
+                                            },
+                                            {
+                                                "name": "xy_step[-12]"
+                                            },
+                                            {
+                                                "name": "xy_step[-13]"
+                                            },
+                                            {
+                                                "name": "xy_step[-14]"
+                                            },
+                                            {
+                                                "name": "xy_step[-15]"
+                                            },
+                                            {
+                                                "name": "xy_step[-16]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out0",
+                                "id": 6,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 18,
+                                "portIndex": 0,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_xy_step",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "vio_block.vio_xy_step[2]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[1]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[0]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-1]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-2]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-3]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-4]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-5]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-6]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-7]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-8]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-9]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-10]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-11]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-12]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-13]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-14]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-15]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_xy_step[-16]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out1",
+                                "id": 7,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 1,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_xy_step_set",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "vio_block.vio_xy_step_set[-16]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out2",
+                                "id": 8,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 2,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_xy_step_shift_right",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out3",
+                                "id": 9,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 3,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_xy_step_shift_left",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out4",
+                                "id": 10,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 18,
+                                "portIndex": 4,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_center_x",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "vio_block.vio_center_x[2]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[1]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[0]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-1]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-2]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-3]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-4]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-5]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-6]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-7]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-8]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-9]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-10]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-11]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-12]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-13]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-14]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-15]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_x[-16]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out5",
+                                "id": 11,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 5,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_center_x_set",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out6",
+                                "id": 12,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 6,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_center_x_move_right",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out7",
+                                "id": 13,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 7,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_center_x_move_left",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out8",
+                                "id": 14,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 18,
+                                "portIndex": 8,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_center_y",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "vio_block.vio_center_y[2]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[1]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[0]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-1]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-2]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-3]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-4]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-5]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-6]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-7]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-8]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-9]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-10]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-11]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-12]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-13]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-14]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-15]"
+                                            },
+                                            {
+                                                "name": "vio_block.vio_center_y[-16]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out9",
+                                "id": 15,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 9,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_center_y_set",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out10",
+                                "id": 16,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 10,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_center_y_move_up",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out11",
+                                "id": 17,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 11,
+                                "nets": [
+                                    {
+                                        "name": "vio_block.vio_center_y_move_down",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out12",
+                                "id": 18,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 15,
+                                "portIndex": 12,
+                                "nets": [
+                                    {
+                                        "name": "max_it",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "max_it[15]"
+                                            },
+                                            {
+                                                "name": "max_it[14]"
+                                            },
+                                            {
+                                                "name": "max_it[13]"
+                                            },
+                                            {
+                                                "name": "max_it[12]"
+                                            },
+                                            {
+                                                "name": "max_it[11]"
+                                            },
+                                            {
+                                                "name": "max_it[10]"
+                                            },
+                                            {
+                                                "name": "max_it[9]"
+                                            },
+                                            {
+                                                "name": "max_it[8]"
+                                            },
+                                            {
+                                                "name": "max_it[7]"
+                                            },
+                                            {
+                                                "name": "max_it[6]"
+                                            },
+                                            {
+                                                "name": "max_it[5]"
+                                            },
+                                            {
+                                                "name": "max_it[4]"
+                                            },
+                                            {
+                                                "name": "max_it[3]"
+                                            },
+                                            {
+                                                "name": "max_it[2]"
+                                            },
+                                            {
+                                                "name": "max_it[1]"
+                                            },
+                                            {
+                                                "name": "max_it[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out13",
+                                "id": 19,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 13,
+                                "nets": [
+                                    {
+                                        "name": "start",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe_out14",
+                                "id": 20,
+                                "type": "DATA",
+                                "direction": "OUT",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 3,
+                                "portIndex": 14,
+                                "nets": [
+                                    {
+                                        "name": "cc_start_index",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "cc_start_index[3]"
+                                            },
+                                            {
+                                                "name": "cc_start_index[2]"
+                                            },
+                                            {
+                                                "name": "cc_start_index[1]"
+                                            },
+                                            {
+                                                "name": "cc_start_index[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+}

@@ -32,11 +32,13 @@ module top (
 
     `ifndef SYNTHESIS
         `define MICRON_SIM 1
+    `else
+        `define MICRON_SIM 0
     `endif
 
-    localparam int NCORES              = 10;
+    localparam int NCORES              = 128;
     localparam int FRAC_WIDTH          = 16;
-    localparam int ARBITER_TREE_SANS   = 4;
+    localparam int ARBITER_TREE_SANS   = 6;
     localparam int BURST_LENGTH        = 32;
     localparam int READER_BURST_LENGTH = 64;
 

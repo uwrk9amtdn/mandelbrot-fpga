@@ -3,33 +3,37 @@ set part xc7a200tfbg676-2
 create_project mandelbrot . -part $part -force
 
 set design_files {
+    ../top.sv
     ../cfg.sv
-    ../color_converter.sv
-    ../core.sv
+    ../wrapper.sv
     ../core_wrapper.sv
+    ../core.sv
+    ../single_iteration.sv
+    ../color_converter.sv
     ../memory_reader.sv
     ../memory_writer.sv
-    ../single_iteration.sv
-    ../wrapper.sv
-    ../top.sv
-    ../../../axi/axi.sv
-    ../../../axi/axi_wc.sv
-    ../../../axis/axis.sv
+    ../../../memory_controllers/ddr3_intf.sv
+    ../../../memory_controllers/uberddr3_wrapper_axi.sv
+    ../../../axis/axis_intf.sv
+    ../../../axis/axis_intf_connect.sv
     ../../../axis/axis_wc.sv
     ../../../axis/axis_afifo.sv
     ../../../axis/axis_rr_arbiter.sv
     ../../../axis/axis_rr_arbiter_tree.sv
     ../../../axis/axis_skid_buffer.sv
-    ../../../hdmi/ac701_adv7511_setup.sv
     ../../../hdmi/display_driver.sv
+    ../../../hdmi/ac701_adv7511_setup.sv
     ../../../i2c/i2c_bit_ctrl.sv
     ../../../i2c/i2c_byte_ctrl.sv
-    ../../../memory_controllers/ddr3.sv
-    ../../../memory_controllers/uberddr3_wrapper_axi.sv
-    ../../../arithmetic/mul_dsp.sv
-    ../../../arithmetic/constant_multiplier.sv
-    ../../../misc/delayer.sv
     ../../../misc/clock_gen_7_series_pll.sv
+    ../../../misc/cdc_single.sv
+    ../../../misc/power_on_reset.sv
+    ../../../misc/delayer.sv
+    ../../../misc/rise_detector.sv
+    ../../../axi/axi_intf.sv
+    ../../../axi/axi_wc.sv
+    ../../../arithmetic/constant_multiplier.sv
+    ../../../arithmetic/mul_dsp.sv
     ../../../third_party/UberDDR3/rtl/ddr3_top.v
     ../../../third_party/UberDDR3/rtl/ddr3_phy.v
     ../../../third_party/UberDDR3/rtl/ddr3_controller.v
@@ -50,11 +54,42 @@ set design_files {
 
 set sim_files {
     ../tb.sv
+    ../../../memory_controllers/ddr3_sim_model/ddr3_model.sv
 }
 
 set constraint_files {
-    ../ac701_constraints.xdc
+    ../ac701.xdc
 }
+
+create_ip -name vio -vendor xilinx.com -library ip -module_name vio_0
+
+set_property -dict [list \
+    CONFIG.C_NUM_PROBE_IN      {6} \
+    CONFIG.C_NUM_PROBE_OUT     {15} \
+    CONFIG.C_PROBE_IN0_WIDTH   {1} \
+    CONFIG.C_PROBE_IN1_WIDTH   {1} \
+    CONFIG.C_PROBE_IN2_WIDTH   {1} \
+    CONFIG.C_PROBE_IN3_WIDTH   {19} \
+    CONFIG.C_PROBE_IN4_WIDTH   {19} \
+    CONFIG.C_PROBE_IN5_WIDTH   {19} \
+    CONFIG.C_PROBE_OUT0_WIDTH  {19} \
+    CONFIG.C_PROBE_OUT1_WIDTH  {1} \
+    CONFIG.C_PROBE_OUT2_WIDTH  {1} \
+    CONFIG.C_PROBE_OUT3_WIDTH  {1} \
+    CONFIG.C_PROBE_OUT4_WIDTH  {19} \
+    CONFIG.C_PROBE_OUT5_WIDTH  {1} \
+    CONFIG.C_PROBE_OUT6_WIDTH  {1} \
+    CONFIG.C_PROBE_OUT7_WIDTH  {1} \
+    CONFIG.C_PROBE_OUT8_WIDTH  {19} \
+    CONFIG.C_PROBE_OUT9_WIDTH  {1} \
+    CONFIG.C_PROBE_OUT10_WIDTH {1} \
+    CONFIG.C_PROBE_OUT11_WIDTH {1} \
+    CONFIG.C_PROBE_OUT12_WIDTH {16} \
+    CONFIG.C_PROBE_OUT13_WIDTH {1} \
+    CONFIG.C_PROBE_OUT14_WIDTH {4} \
+] [get_ips vio_0]
+
+# generate_target all [get_ips vio_0]
 
 add_files $design_files
 add_files -fileset sim_1 $sim_files

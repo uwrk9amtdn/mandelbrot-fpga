@@ -62,19 +62,16 @@ module top (
     ) ddr3_axi_64 ();
 
     // clk
-    logic                 vio_rst;
-    logic                 ddr3_calib_complete;
-    logic [15:0]          max_it;
-    logic [2:-FRAC_WIDTH] center_x;
-    logic [2:-FRAC_WIDTH] center_y;
-    logic [2:-FRAC_WIDTH] xy_step;
-    logic                 start;
+    logic [15:0]                 max_it;
+    logic signed [2:-FRAC_WIDTH] center_x;
+    logic signed [2:-FRAC_WIDTH] center_y;
+    logic signed [2:-FRAC_WIDTH] xy_step;
+    logic                        start;
 
-    logic adv7511_setup_error;
-    logic adv7511_setup_done;
-
-    // pixel_clk
-    logic [3:0] cc_start_index;
+    logic                        ddr3_calib_complete;
+    logic                        adv7511_setup_error;
+    logic                        adv7511_setup_done;
+    logic [3:0]                  cc_start_index;
 
     begin : clk_block
         logic sysclk_nobuf;
@@ -328,11 +325,14 @@ module top (
             .m (fifo_m)
         );
 
+        logic [3:0] cc_start_index_;
+        cdc_multi #(4, 4) cdc0 (clk, pixel_clk, cc_start_index, cc_start_index_);
+
         color_converter cc(
             .clk         (pixel_clk),
             .rst         ('0),
 
-            .start_index (cc_start_index),
+            .start_index (cc_start_index_),
 
             .s_axis_it   (fifo_m),
 
@@ -437,36 +437,165 @@ module top (
             .m      (ddr3_axi_64)
         );
 
-        always_ff @(posedge clk) begin
-            start_d1        <= start;
-            wrapper_s_valid <= ~start_d1 & start;
-            if (rst) begin
-                start_d1         <= 0;
-                wrapper_s_valid  <= 0;
-            end
-        end
+        rise_detector start_rd (clk, rst, start, wrapper_s_valid);
     end
 
-    /*
-    vio_0 vio0 (
-        .clk        (clk),
+    begin : vio_block
+        logic [2:-FRAC_WIDTH] vio_xy_step;
+        logic [2:-FRAC_WIDTH] vio_xy_step_set;
+        logic                 vio_xy_step_shift_right;
+        logic                 vio_xy_step_shift_left;
 
-        .probe_in0  (adv7511_setup_error),
-        .probe_in1  (adv7511_setup_done),
-        .probe_in2  (ddr3_calib_complete),
+        logic [2:-FRAC_WIDTH] vio_center_x;
+        logic                 vio_center_x_set;
+        logic                 vio_center_x_move_right;
+        logic                 vio_center_x_move_left;
 
-        .probe_out0 (vio_rst),
-        .probe_out1 (max_it),
-        .probe_out2 (center_x),
-        .probe_out3 (center_y),
-        .probe_out4 (xy_step),
-        .probe_out5 (start)
-    );
+        logic [2:-FRAC_WIDTH] vio_center_y;
+        logic                 vio_center_y_set;
+        logic                 vio_center_y_move_up;
+        logic                 vio_center_y_move_down;
 
-    vio_1 vio1 (
-        .clk        (pixel_clk),
-        .probe_out0 (cc_start_index)
-    );
-    */
+        logic                 vio_max_it;
+        logic                 vio_start;
+
+        logic [3:0]           vio_cc_start_index;
+
+        logic                 vio_xy_step_set_rise;
+        logic                 vio_xy_step_shift_right_rise;
+        logic                 vio_xy_step_shift_left_rise;
+        logic                 vio_center_x_set_rise;
+        logic                 vio_center_x_move_right_rise;
+        logic                 vio_center_x_move_left_rise;
+        logic                 vio_center_y_set_rise;
+        logic                 vio_center_y_move_up_rise;
+        logic                 vio_center_y_move_down_rise;
+
+        rise_detector r0(clk, rst, vio_xy_step_set,         vio_xy_step_set_rise);
+        rise_detector r1(clk, rst, vio_xy_step_shift_right, vio_xy_step_shift_right_rise);
+        rise_detector r2(clk, rst, vio_xy_step_shift_left,  vio_xy_step_shift_left_rise);
+
+        rise_detector r3(clk, rst, vio_center_x_set,        vio_center_x_set_rise);
+        rise_detector r4(clk, rst, vio_center_x_move_right, vio_center_x_move_right_rise);
+        rise_detector r5(clk, rst, vio_center_x_move_left,  vio_center_x_move_left_rise);
+
+        rise_detector r6(clk, rst, vio_center_y_set,       vio_center_y_set_rise);
+        rise_detector r7(clk, rst, vio_center_y_move_up,   vio_center_y_move_up_rise);
+        rise_detector r8(clk, rst, vio_center_y_move_down, vio_center_y_move_down_rise);
+
+        logic signed [2:-FRAC_WIDTH] center_x_move_step;
+        logic signed [2:-FRAC_WIDTH] center_y_move_step;
+
+        constant_multiplier #(
+            .INPUT_WIDTH     (3+FRAC_WIDTH),
+            .CONSTANT_WIDTH  ($clog2(1920/8)+2),
+            .OUTPUT_WIDTH    (3+FRAC_WIDTH),
+            .SIGNED          (1),
+            .CONSTANT        (1920/8),
+            .LATENCY         (1)
+        ) cmul_x (
+            .clk       (clk),
+            .rst       (rst),
+
+            .s_valid   (1),
+            .s_data    (xy_step),
+
+            .m_valid   (),
+            .m_data    (center_x_move_step)
+        );
+
+        constant_multiplier #(
+            .INPUT_WIDTH     (3+FRAC_WIDTH),
+            .CONSTANT_WIDTH  ($clog2(1080/8)+2),
+            .OUTPUT_WIDTH    (3+FRAC_WIDTH),
+            .SIGNED          (1),
+            .CONSTANT        (1080/8),
+            .LATENCY         (1)
+        ) cmul_y (
+            .clk       (clk),
+            .rst       (rst),
+
+            .s_valid   (1),
+            .s_data    (xy_step),
+
+            .m_valid   (),
+            .m_data    (center_y_move_step)
+        );
+
+        always_ff @(posedge clk) begin
+            if (vio_xy_step_set_rise) begin
+                xy_step <= vio_xy_step;
+            end
+
+            if (vio_xy_step_shift_right_rise) begin
+                xy_step <= xy_step >>> 1;
+            end
+
+            if (vio_xy_step_shift_left_rise) begin
+                xy_step <= xy_step <<< 1;
+            end
+
+            if (vio_center_x_set_rise) begin
+                center_x <= vio_center_x;
+            end
+
+            if (vio_center_x_move_left_rise) begin
+                center_x <= center_x - center_x_move_step;
+            end
+
+            if (vio_center_x_move_right_rise) begin
+                center_x <= center_x + center_x_move_step;
+            end
+
+            if (vio_center_y_set_rise) begin
+                center_y <= vio_center_y;
+            end
+
+            if (vio_center_y_move_up_rise) begin
+                center_y <= center_y + center_y_move_step;
+            end
+
+            if (vio_center_y_move_down_rise) begin
+                center_y <= center_y - center_y_move_step;
+            end
+
+            if (rst) begin
+                center_x <= 0;
+                center_y <= 0;
+                xy_step <= 0;
+            end
+        end
+
+        vio_0 vio0 (
+            .clk         (clk),
+
+            .probe_in0   (adv7511_setup_error),
+            .probe_in1   (adv7511_setup_done),
+            .probe_in2   (ddr3_calib_complete),
+            .probe_in3   (center_x),
+            .probe_in4   (center_y),
+            .probe_in5   (xy_step),
+
+            .probe_out0  (vio_xy_step),
+            .probe_out1  (vio_xy_step_set),
+            .probe_out2  (vio_xy_step_shift_right),
+            .probe_out3  (vio_xy_step_shift_left),
+
+            .probe_out4  (vio_center_x),
+            .probe_out5  (vio_center_x_set),
+            .probe_out6  (vio_center_x_move_right),
+            .probe_out7  (vio_center_x_move_left),
+
+            .probe_out8  (vio_center_y),
+            .probe_out9  (vio_center_y_set),
+            .probe_out10 (vio_center_y_move_up),
+            .probe_out11 (vio_center_y_move_down),
+
+            .probe_out12 (max_it),
+            .probe_out13 (start),
+            .probe_out14 (cc_start_index)
+        );
+    end
+
 
 endmodule

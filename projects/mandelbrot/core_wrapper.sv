@@ -170,7 +170,11 @@ module core_wrapper #(
                     m.data  <= addr[15:0];
                     m.last  <= 0;
                     mstate  <= UNLOAD;
-                    addr    <= addr + (N * 2);
+                    if (addr == (START_ADDR + (X_RES * Y_RES - N) * 2)) begin
+                        addr <= START_ADDR;
+                    end else begin
+                        addr <= addr + (N * 2);
+                    end
                 end
             end
             UNLOAD: begin

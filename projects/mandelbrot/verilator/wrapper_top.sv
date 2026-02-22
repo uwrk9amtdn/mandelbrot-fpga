@@ -19,8 +19,8 @@ module wrapper_top(
     output logic         m_data_last
 );
 
-    localparam int          X_RES             = 128;
-    localparam int          Y_RES             = 128;
+    localparam int          X_RES             = 2048;
+    localparam int          Y_RES             = 2048;
     localparam int          FRAC_WIDTH        = 16;
     localparam int          NCORES            = 16;
     localparam int          ARBITER_TREE_SANS = 4;
@@ -61,5 +61,10 @@ module wrapper_top(
         .m_addr     (m_addr),
         .m_data     (m_data)
     );
+
+    // initial begin
+    //     $dumpfile("out.vcd");
+    //     $dumpvars;
+    // end
 
 endmodule

@@ -36,18 +36,19 @@ module single_iteration #(
     delayer #(3+FRAC_WIDTH, L + 1) d0 (clk, s_c, c);
     delayer #(3+FRAC_WIDTH, L + 1) d1 (clk, s_d, d);
 
-    logic signed [6:-FRAC_WIDTH] a2_plus_b2;
-    logic signed [6:-FRAC_WIDTH] a2_minus_b2;
-    logic signed [6:-FRAC_WIDTH] ab_times_2;
+    logic signed [6:-2*FRAC_WIDTH] a2_plus_b2;
+    logic signed [6:-2*FRAC_WIDTH] a2_minus_b2;
+    logic signed [6:-2*FRAC_WIDTH] ab_times_2;
 
     always_ff @(posedge clk) begin
-        a2_plus_b2  <= a2[5:-FRAC_WIDTH] + b2[5:-FRAC_WIDTH];
-        a2_minus_b2 <= a2[5:-FRAC_WIDTH] - b2[5:-FRAC_WIDTH];
-        ab_times_2  <= ab[5:-FRAC_WIDTH-1] << 1;
-        m_a         <= a2_minus_b2 + c;
-        m_b         <= ab_times_2 + d;
+        a2_plus_b2  <= a2 + b2;
+        a2_minus_b2 <= a2 - b2;
+        ab_times_2  <= ab << 1;
+        m_a         <= a2_minus_b2[2:-FRAC_WIDTH] + c;
+        m_b         <= ab_times_2[2:-FRAC_WIDTH] + d;
         m_stop      <= |a2_plus_b2[6:2];
     end
+
 endmodule
 
 /*

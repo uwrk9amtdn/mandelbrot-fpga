@@ -83,7 +83,7 @@ module wrapper #(
 
         constant_multiplier #(
             .INPUT_WIDTH     (3+FRAC_WIDTH),
-            .CONSTANT_WIDTH  ($clog2(X_RES/2)+1),
+            .CONSTANT_WIDTH  ($clog2(X_RES/2)+2),
             .OUTPUT_WIDTH    (3+FRAC_WIDTH),
             .SIGNED          (1),
             .CONSTANT        (X_RES/2),
@@ -101,7 +101,7 @@ module wrapper #(
 
         constant_multiplier #(
             .INPUT_WIDTH     (3+FRAC_WIDTH),
-            .CONSTANT_WIDTH  ($clog2(Y_RES/2)+1),
+            .CONSTANT_WIDTH  ($clog2(Y_RES/2)+2),
             .OUTPUT_WIDTH    (3+FRAC_WIDTH),
             .SIGNED          (1),
             .CONSTANT        (Y_RES/2),
@@ -119,7 +119,7 @@ module wrapper #(
 
         constant_multiplier #(
             .INPUT_WIDTH     (3+FRAC_WIDTH),
-            .CONSTANT_WIDTH  ($clog2(Y_RES/NCORES)+1),
+            .CONSTANT_WIDTH  ($clog2(Y_RES/NCORES)+2),
             .OUTPUT_WIDTH    (3+FRAC_WIDTH),
             .SIGNED          (1),
             .CONSTANT        (Y_RES/NCORES),

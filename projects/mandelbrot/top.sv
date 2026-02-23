@@ -204,23 +204,23 @@ module top (
             .COL_BITS (10),
             .DQ_BITS  (64),
             .DQS_BITS (8)
-        ) ddr3 ();
-
-        assign ddr3_reset_n = ddr3.rst_n;
-        assign ddr3_ck_p    = ddr3.ck;
-        assign ddr3_ck_n    = ddr3.ck_n;
-        assign ddr3_cke     = ddr3.cke;
-        assign ddr3_cs_n    = ddr3.cs_n;
-        assign ddr3_ras_n   = ddr3.ras_n;
-        assign ddr3_cas_n   = ddr3.cas_n;
-        assign ddr3_we_n    = ddr3.we_n;
-        assign ddr3_dm      = ddr3.dm;
-        assign ddr3_ba      = ddr3.ba;
-        assign ddr3_addr    = ddr3.addr;
-        alias  ddr3_dq      = ddr3.dq;
-        alias  ddr3_dqs_p   = ddr3.dqs;
-        alias  ddr3_dqs_n   = ddr3.dqs_n;
-        assign ddr3_odt     = ddr3.odt;
+        ) ddr3 (
+            .rst_n (ddr3_reset_n),
+            .ck    (ddr3_ck_p),
+            .ck_n  (ddr3_ck_n),
+            .cke   (ddr3_cke),
+            .cs_n  (ddr3_cs_n),
+            .ras_n (ddr3_ras_n),
+            .cas_n (ddr3_cas_n),
+            .we_n  (ddr3_we_n),
+            .dm    (ddr3_dm),
+            .ba    (ddr3_ba),
+            .addr  (ddr3_addr),
+            .dq    (ddr3_dq),
+            .dqs   (ddr3_dqs_p),
+            .dqs_n (ddr3_dqs_n),
+            .odt   (ddr3_odt)
+        );
 
         axi_intf #(
             .ID_WIDTH   (4),

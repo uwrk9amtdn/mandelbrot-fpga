@@ -1,5 +1,4 @@
 `timescale 1ns/1ps
-
 module tb;
 
     wire [63:0] ddr3_dq;

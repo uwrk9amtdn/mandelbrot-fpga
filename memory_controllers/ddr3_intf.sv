@@ -5,20 +5,21 @@ interface ddr3_intf #(
     COL_BITS   = 10,
     DQ_BITS    = 64,
     DQS_BITS   = 8
+)(
+    output logic                rst_n,
+    output logic                ck,
+    output logic                ck_n,
+    output logic                cke,
+    output logic                cs_n,
+    output logic                ras_n,
+    output logic                cas_n,
+    output logic                we_n,
+    output logic [DM_BITS-1:0]  dm,
+    output logic [BA_BITS-1:0]  ba,
+    output logic [ROW_BITS-1:0] addr,
+    inout  logic [DQ_BITS-1:0]  dq,
+    inout  logic [DQS_BITS-1:0] dqs,
+    inout  logic [DQS_BITS-1:0] dqs_n,
+    output logic                odt
 );
-    logic                rst_n;
-    logic                ck;
-    logic                ck_n;
-    logic                cke;
-    logic                cs_n;
-    logic                ras_n;
-    logic                cas_n;
-    logic                we_n;
-    logic [DM_BITS-1:0]  dm;
-    logic [BA_BITS-1:0]  ba;
-    logic [ROW_BITS-1:0] addr;
-    wire  [DQ_BITS-1:0]  dq;
-    wire  [DQS_BITS-1:0] dqs;
-    wire  [DQS_BITS-1:0] dqs_n;
-    logic                odt;
 endinterface

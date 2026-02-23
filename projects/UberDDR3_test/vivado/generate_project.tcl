@@ -23,7 +23,7 @@ set design_files {
 
 set sim_files {
     ../tb.sv
-    ../ddr3_model.sv
+    ../../../memory_controllers/ddr3_sim_model/ddr3_model.sv
 }
 
 set constraint_files {

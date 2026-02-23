@@ -21,7 +21,7 @@ module color_converter(
 
     always_ff @(posedge clk) begin
         m_axis_rgb.valid <= s_axis_it.valid;
-        m_axis_rgb.data  <= {3{s_axis_it.data[start_index+:8]}};
+        m_axis_rgb.data  <= {8'h00, 8'h00, s_axis_it.data[start_index+:8]};
         if (rst) begin
             m_axis_rgb.valid <= 0;
         end

@@ -1,4 +1,4 @@
-VIVADO := vivado
+VIVADO ?= vivado
 
 generate_project: generate_project.tcl
 	$(VIVADO) -mode batch -source generate_project.tcl

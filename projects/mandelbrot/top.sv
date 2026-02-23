@@ -30,15 +30,15 @@ module top (
     output [0:0]  ddr3_odt
 );
 
-    `ifndef SYNTHESIS
-        `define MICRON_SIM 1
-    `else
+    `ifdef SYNTHESIS
         `define MICRON_SIM 0
+    `else
+        `define MICRON_SIM 1
     `endif
 
-    localparam int NCORES              = 128;
+    localparam int NCORES              = 108;
     localparam int FRAC_WIDTH          = 16;
-    localparam int ARBITER_TREE_SANS   = 6;
+    localparam int ARBITER_TREE_SANS   = 5;
     localparam int BURST_LENGTH        = 32;
     localparam int READER_BURST_LENGTH = 64;
 
@@ -443,35 +443,38 @@ module top (
     end
 
     begin : vio_block
-        logic [2:-FRAC_WIDTH] vio_xy_step;
-        logic [2:-FRAC_WIDTH] vio_xy_step_set;
-        logic                 vio_xy_step_shift_right;
-        logic                 vio_xy_step_shift_left;
+        (* keep = "yes" *) logic [2:-FRAC_WIDTH] vio_xy_step;
+        (* keep = "yes" *) logic                 vio_xy_step_set;
+        (* keep = "yes" *) logic                 vio_xy_step_shift_right;
+        (* keep = "yes" *) logic                 vio_xy_step_shift_left;
 
-        logic [2:-FRAC_WIDTH] vio_center_x;
-        logic                 vio_center_x_set;
-        logic                 vio_center_x_move_right;
-        logic                 vio_center_x_move_left;
+        (* keep = "yes" *) logic [2:-FRAC_WIDTH] vio_center_x;
+        (* keep = "yes" *) logic                 vio_center_x_set;
+        (* keep = "yes" *) logic                 vio_center_x_move_right;
+        (* keep = "yes" *) logic                 vio_center_x_move_left;
 
-        logic [2:-FRAC_WIDTH] vio_center_y;
-        logic                 vio_center_y_set;
-        logic                 vio_center_y_move_up;
-        logic                 vio_center_y_move_down;
+        (* keep = "yes" *) logic [2:-FRAC_WIDTH] vio_center_y;
+        (* keep = "yes" *) logic                 vio_center_y_set;
+        (* keep = "yes" *) logic                 vio_center_y_move_up;
+        (* keep = "yes" *) logic                 vio_center_y_move_down;
 
-        logic                 vio_max_it;
-        logic                 vio_start;
+        (* keep = "yes" *) logic [3:0]           vio_cc_start_index;
+        (* keep = "yes" *) logic [15:0]          vio_max_it;
+        (* keep = "yes" *) logic                 vio_start;
 
-        logic [3:0]           vio_cc_start_index;
+        assign cc_start_index = vio_cc_start_index;
+        assign max_it         = vio_max_it;
+        assign start          = vio_start;
 
-        logic                 vio_xy_step_set_rise;
-        logic                 vio_xy_step_shift_right_rise;
-        logic                 vio_xy_step_shift_left_rise;
-        logic                 vio_center_x_set_rise;
-        logic                 vio_center_x_move_right_rise;
-        logic                 vio_center_x_move_left_rise;
-        logic                 vio_center_y_set_rise;
-        logic                 vio_center_y_move_up_rise;
-        logic                 vio_center_y_move_down_rise;
+        logic vio_xy_step_set_rise;
+        logic vio_xy_step_shift_right_rise;
+        logic vio_xy_step_shift_left_rise;
+        logic vio_center_x_set_rise;
+        logic vio_center_x_move_right_rise;
+        logic vio_center_x_move_left_rise;
+        logic vio_center_y_set_rise;
+        logic vio_center_y_move_up_rise;
+        logic vio_center_y_move_down_rise;
 
         rise_detector r0(clk, rst, vio_xy_step_set,         vio_xy_step_set_rise);
         rise_detector r1(clk, rst, vio_xy_step_shift_right, vio_xy_step_shift_right_rise);
@@ -593,9 +596,9 @@ module top (
             .probe_out10 (vio_center_y_move_up),
             .probe_out11 (vio_center_y_move_down),
 
-            .probe_out12 (max_it),
-            .probe_out13 (start),
-            .probe_out14 (cc_start_index)
+            .probe_out12 (vio_max_it),
+            .probe_out13 (vio_start),
+            .probe_out14 (vio_cc_start_index)
         );
     end
 

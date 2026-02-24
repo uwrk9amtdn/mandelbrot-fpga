@@ -30,13 +30,7 @@ module top (
     output [0:0]  ddr3_odt
 );
 
-    `ifdef SYNTHESIS
-        `define MICRON_SIM 0
-    `else
-        `define MICRON_SIM 1
-    `endif
-
-    localparam int NCORES              = 108;
+    localparam int NCORES              = 1;
     localparam int FRAC_WIDTH          = 16;
     localparam int ARBITER_TREE_SANS   = 5;
     localparam int BURST_LENGTH        = 32;
@@ -45,18 +39,15 @@ module top (
     localparam real CLOCK_FREQ = 100.0;
 
     logic       sysclk;
+    logic       sysrst;
 
     logic       ddr3_clk;
-    logic       ddr3_clk_90;
-    logic       ddr3_ctrl_clk;
-    logic       ddr3_ctrl_rst;
-    logic       ddr3_ref_clk;
+    logic       ddr3_rst;
 
     logic       clk;
     logic       rst;
 
-    // ddr3_ctrl_clk
-
+    // ddr3_clk
     axi_intf #(
         .ID_WIDTH   (4),
         .ADDR_WIDTH (30),
@@ -87,24 +78,6 @@ module top (
         BUFG bufg (
             .I (sysclk_nobuf),
             .O (sysclk)
-        );
-
-        clock_gen_7series_pll #(
-            .N               (4),
-            .INPUT_FREQ      (200.0),
-            .OUTPUT_FREQ     ('{100.0, 400.0, 400.0, 200.0}),
-            .OUTPUT_PHASE    ('{0.0, 0.0, 90.0, 0.0}),
-            .MAX_FREQ_ERROR  ('{default:0.0}),
-            .MAX_PHASE_ERROR ('{default:0.0}),
-            .VCO_MIN         (800.0),
-            .VCO_MAX         (1866.0),
-            .PFD_MIN         (19.0),
-            .PFD_MAX         (500.0)  // speed grade -2
-        ) clk_gen0 (
-            .clk_in    (sysclk),
-            .clk_out   ({ddr3_ctrl_clk, ddr3_clk, ddr3_clk_90, ddr3_ref_clk}),
-            .reset     ('0),
-            .locked    ()
         );
 
         clock_gen_7series_pll #(
@@ -142,8 +115,10 @@ module top (
             .reset     ('0),
             .locked    ()
         );
-        power_on_reset #(16) por_clk (clk, rst);
-        power_on_reset #(16) por_ddr3_ctrl_clk (ddr3_ctrl_clk, ddr3_ctrl_rst);
+
+        power_on_reset #(32) por_sysclk   (sysclk, sysrst);
+        power_on_reset #(32) por_clk      (clk, rst);
+        power_on_reset #(32) por_ddr3_clk (ddr3_clk, ddr3_rst);
     end
 
     begin : i2c_block
@@ -228,31 +203,27 @@ module top (
             .DATA_WIDTH (512)
         ) ddr3_axi ();
 
-        uberddr3_wrapper_axi #(
-            .CLK_PERIOD_PS      (10000),
-            .DDR3_CLK_PERIOD_PS (2500),
-            .MICRON_SIM         (`MICRON_SIM)
-        ) uberddr3 (
-            .clk            (ddr3_ctrl_clk),
-            .rst            (ddr3_ctrl_rst),
+        ac701_mig_wrapper_axi mig(
+            .sys_clk             (sysclk),
+            .sys_rst             (sysrst),
 
-            .ddr3_clk       (ddr3_clk),
-            .ddr3_clk_90    (ddr3_clk_90),
-            .ref_clk        (ddr3_ref_clk), // 200 MHz
+            .init_calib_complete (calib_complete),
 
-            .calib_complete (calib_complete),
+            .mmcm_locked         (),
 
-            .s_axi          (ddr3_axi),
+            .s_axi_clk           (ddr3_clk),
+            .s_axi_rst           (ddr3_rst),
+            .s_axi               (ddr3_axi),
 
-            .ddr3           (ddr3)
+            .ddr3                (ddr3)
         );
 
         axi_wc #(
             .CONVERT_BURST        (1),
             .CONVERT_NARROW_BURST (0)
         ) wc (
-            .clk (ddr3_ctrl_clk),
-            .rst (ddr3_ctrl_rst),
+            .clk (ddr3_clk),
+            .rst (ddr3_rst),
             .s   (ddr3_axi_64),
             .m   (ddr3_axi)
         );
@@ -284,15 +255,15 @@ module top (
             .SYNC_STAGES   (4),
             .INITIAL_VALUE (1'b0)
         ) vsync_cdc (
-            .clk (ddr3_ctrl_clk),
+            .clk (ddr3_clk),
             .i   (vsync),
             .o   (vsync_synced)
         );
 
-        always_ff @(posedge ddr3_ctrl_clk) begin
+        always_ff @(posedge ddr3_clk) begin
             vsync_synced_d1 <= vsync_synced;
             mr_s_valid      <= ~vsync_synced_d1 & vsync_synced;
-            if (ddr3_ctrl_rst) begin
+            if (ddr3_rst) begin
                 mr_s_valid      <= 0;
                 vsync_synced_d1 <= 0;
             end
@@ -304,8 +275,8 @@ module top (
             .COUNT        (1920*1080),
             .BURST_LENGTH (READER_BURST_LENGTH)
         ) mr (
-            .clk     (ddr3_ctrl_clk),
-            .rst     (ddr3_ctrl_rst),
+            .clk     (ddr3_clk),
+            .rst     (ddr3_rst),
 
             .s_ready (),
             .s_valid (mr_s_valid),
@@ -318,8 +289,8 @@ module top (
             .SYNC_STAGES (2),
             .DEPTH       (64)
         ) afifo (
-            .s_clk (ddr3_ctrl_clk),
-            .s_rst (ddr3_ctrl_rst),
+            .s_clk (ddr3_clk),
+            .s_rst (ddr3_rst),
             .m_clk (pixel_clk),
             .m_rst ('0),
 
@@ -385,8 +356,8 @@ module top (
         ) addr_fifo (
             .s_clk (clk),
             .s_rst (rst),
-            .m_clk (ddr3_ctrl_clk),
-            .m_rst (ddr3_ctrl_rst),
+            .m_clk (ddr3_clk),
+            .m_rst (ddr3_rst),
 
             .s (addr_fifo_s),
             .m (addr_fifo_m)
@@ -398,8 +369,8 @@ module top (
         ) data_fifo (
             .s_clk (clk),
             .s_rst (rst),
-            .m_clk (ddr3_ctrl_clk),
-            .m_rst (ddr3_ctrl_rst),
+            .m_clk (ddr3_clk),
+            .m_rst (ddr3_rst),
 
             .s (data_fifo_s),
             .m (data_fifo_m)
@@ -432,8 +403,8 @@ module top (
             .BURST_LENGTH (BURST_LENGTH),
             .AXI_ID       (0)
         ) memw (
-            .clk    (ddr3_ctrl_clk),
-            .rst    (ddr3_ctrl_rst),
+            .clk    (ddr3_clk),
+            .rst    (ddr3_rst),
             .s_addr (addr_fifo_m),
             .s_data (data_fifo_m),
             .m      (ddr3_axi_64)

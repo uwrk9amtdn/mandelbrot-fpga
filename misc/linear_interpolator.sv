@@ -1,24 +1,65 @@
 // q = a + alpha * (b - a)
 module linear_interpolator #(
-    bit SIGNED    = 1, // is a and b signed
-    int WIDTH     = 8, // data width
-    int PRECISION = 4  // alpha fraction bits
+    int INPUT_LATENCY  = 1,
+    int OUTPUT_LATENCY = 1,
+    bit SIGNED         = 1, // is a and b signed
+    int WIDTH          = 8, // data width
+    int PRECISION      = 4  // alpha fraction bits
 )(
     input                clk,
-    input                rst,
 
-    output               s_ready,
-    input                s_valid,
-    input [WIDTH-1:0]    s_a,
-    input [WIDTH-1:0]    s_b,
-    input [0:-PRECISION] s_alpha,
+    input [WIDTH-1:0]    a,
+    input [WIDTH-1:0]    b,
+    input [-1:-PRECISION] alpha,
 
-    input              m_ready,
-    output             m_valid
-    output [WIDTH-1:0] m_q,
+    output [WIDTH-1:0] q,
 );
 
-    logic [WIDTH-1:0] q_reg;
+    logic [WIDTH-1:0]    a_reg;
+    logic [WIDTH-1:0]    b_reg;
+    logic [0:-PRECISION] alpha_reg;
+    logic [WIDTH-1:0]    q_reg;
+
+    if (SIGNED) begin
+
+    end
+
+    if (!SIGNED) begin
+        always_comb begin
+            q_ = a_ + alpha_ + (b_ - a_);
+        end
+    end
+
+    generate
+        logic
+
+        assign a_       = a_reg[INPUT_LATENCY];
+        assign b_       = b_reg[INPUT_LATENCY];
+        assign alpha_   = alpha_reg[INPUT_LATENCY];
+        assign q_reg[0] = q_;
+
+        if (SIGNED) begin
+            q_ = a_ + alpha_ + (b_ - a_);
+        end
+        else begin
+
+        end
+    endgenerate
+
+    always @(posedge clk) begin
+        for (int i = 0; i < INPUT_LATENCY + 1; i++) begin
+            a_reg     [i] <= a_reg     [i - 1];
+            b_reg     [i] <= b_reg     [i - 1];
+            alpha_reg [i] <= alpha_reg [i - 1];
+        end
+
+        for (int i = 1; i < OUTPUT_LATENCY + 1; i++) begin
+            q_reg[i] <= q_reg[i - 1];
+        end
+    end
+
+
+
 
     always_comb begin
         if (SIGNED) begin
@@ -30,9 +71,6 @@ module linear_interpolator #(
 
     always_ff @(posedge clk) begin
 
-        if (rst) begin
-
-        end
     end
 
 endmodule

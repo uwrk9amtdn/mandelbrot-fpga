@@ -1,6 +1,6 @@
-set part xc7a200tfbg676-2
+create_project mandelbrot . -force
 
-create_project mandelbrot . -part $part -force
+set_property board_part xilinx.com:ac701:part0:1.4 [current_project]
 
 set design_files {
     ../top.sv
@@ -13,7 +13,7 @@ set design_files {
     ../memory_reader.sv
     ../memory_writer.sv
     ../../../memory_controllers/ddr3_intf.sv
-    ../../../memory_controllers/uberddr3_wrapper_axi.sv
+    ../../../memory_controllers/mig_ac701_axi_wrapper.sv
     ../../../axis/axis_intf.sv
     ../../../axis/axis_intf_connect.sv
     ../../../axis/axis_wc.sv
@@ -36,17 +36,6 @@ set design_files {
     ../../../axi/axi_wc.sv
     ../../../arithmetic/constant_multiplier.sv
     ../../../arithmetic/mul_dsp.sv
-    ../../../third_party/UberDDR3/rtl/ddr3_top.v
-    ../../../third_party/UberDDR3/rtl/ddr3_phy.v
-    ../../../third_party/UberDDR3/rtl/ddr3_controller.v
-    ../../../third_party/UberDDR3/rtl/axi/axi_addr.v
-    ../../../third_party/UberDDR3/rtl/axi/axim2wbsp.v
-    ../../../third_party/UberDDR3/rtl/axi/aximrd2wbsp.v
-    ../../../third_party/UberDDR3/rtl/axi/aximwr2wbsp.v
-    ../../../third_party/UberDDR3/rtl/axi/ddr3_top_axi.v
-    ../../../third_party/UberDDR3/rtl/axi/sfifo.v
-    ../../../third_party/UberDDR3/rtl/axi/skidbuffer.v
-    ../../../third_party/UberDDR3/rtl/axi/wbarbiter.v
     ../../../third_party/verilog-axi/rtl/axi_adapter.v
     ../../../third_party/verilog-axi/rtl/axi_adapter_rd.v
     ../../../third_party/verilog-axi/rtl/axi_adapter_wr.v
@@ -96,6 +85,8 @@ set_property -dict [list \
 add_files $design_files
 add_files -fileset sim_1 $sim_files
 add_files -fileset constrs_1 $constraint_files
+
+import_files ../../../memory_controllers/mig_ac701_axi/mig_ac701_axi.xci
 
 set_property top top [current_fileset]
 update_compile_order -fileset sources_1

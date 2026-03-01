@@ -118,7 +118,6 @@ module top (
 
         power_on_reset #(32) por_sysclk   (sysclk, sysrst);
         power_on_reset #(32) por_clk      (clk, rst);
-        power_on_reset #(32) por_ddr3_clk (ddr3_clk, ddr3_rst);
     end
 
     begin : i2c_block
@@ -203,19 +202,17 @@ module top (
             .DATA_WIDTH (512)
         ) ddr3_axi ();
 
-        ac701_mig_wrapper_axi mig(
+        mig_ac701_axi_wrapper mig(
             .sys_clk             (sysclk),
             .sys_rst             (sysrst),
 
-            .init_calib_complete (calib_complete),
+            .ddr3                (ddr3),
 
-            .mmcm_locked         (),
+            .init_calib_complete (calib_complete),
 
             .s_axi_clk           (ddr3_clk),
             .s_axi_rst           (ddr3_rst),
-            .s_axi               (ddr3_axi),
-
-            .ddr3                (ddr3)
+            .s_axi               (ddr3_axi)
         );
 
         axi_wc #(
@@ -414,24 +411,24 @@ module top (
     end
 
     begin : vio_block
-        (* keep = "yes" *) logic [2:-FRAC_WIDTH] vio_xy_step;
-        (* keep = "yes" *) logic                 vio_xy_step_set;
-        (* keep = "yes" *) logic                 vio_xy_step_shift_right;
-        (* keep = "yes" *) logic                 vio_xy_step_shift_left;
+        logic [2:-FRAC_WIDTH] vio_xy_step;
+        logic                 vio_xy_step_set;
+        logic                 vio_xy_step_shift_right;
+        logic                 vio_xy_step_shift_left;
 
-        (* keep = "yes" *) logic [2:-FRAC_WIDTH] vio_center_x;
-        (* keep = "yes" *) logic                 vio_center_x_set;
-        (* keep = "yes" *) logic                 vio_center_x_move_right;
-        (* keep = "yes" *) logic                 vio_center_x_move_left;
+        logic [2:-FRAC_WIDTH] vio_center_x;
+        logic                 vio_center_x_set;
+        logic                 vio_center_x_move_right;
+        logic                 vio_center_x_move_left;
 
-        (* keep = "yes" *) logic [2:-FRAC_WIDTH] vio_center_y;
-        (* keep = "yes" *) logic                 vio_center_y_set;
-        (* keep = "yes" *) logic                 vio_center_y_move_up;
-        (* keep = "yes" *) logic                 vio_center_y_move_down;
+        logic [2:-FRAC_WIDTH] vio_center_y;
+        logic                 vio_center_y_set;
+        logic                 vio_center_y_move_up;
+        logic                 vio_center_y_move_down;
 
-        (* keep = "yes" *) logic [3:0]           vio_cc_start_index;
-        (* keep = "yes" *) logic [15:0]          vio_max_it;
-        (* keep = "yes" *) logic                 vio_start;
+        logic [3:0]           vio_cc_start_index;
+        logic [15:0]          vio_max_it;
+        logic                 vio_start;
 
         assign cc_start_index = vio_cc_start_index;
         assign max_it         = vio_max_it;

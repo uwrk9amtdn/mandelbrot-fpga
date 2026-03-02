@@ -30,7 +30,7 @@ module top (
     output [0:0]  ddr3_odt
 );
 
-    localparam int NCORES              = 1;
+    localparam int NCORES              = 108;
     localparam int FRAC_WIDTH          = 16;
     localparam int ARBITER_TREE_SANS   = 5;
     localparam int BURST_LENGTH        = 32;
@@ -65,6 +65,8 @@ module top (
     logic                        adv7511_setup_error;
     logic                        adv7511_setup_done;
     logic [3:0]                  cc_start_index;
+
+    logic pixel_fifo_empty_read;
 
     begin : clk_block
         logic sysclk_nobuf;
@@ -286,10 +288,10 @@ module top (
             .SYNC_STAGES (2),
             .DEPTH       (64)
         ) afifo (
+            .arst (ddr3_rst),
+
             .s_clk (ddr3_clk),
-            .s_rst (ddr3_rst),
             .m_clk (pixel_clk),
-            .m_rst ('0),
 
             .s (fifo_s),
             .m (fifo_m)
@@ -335,9 +337,19 @@ module top (
             .vsync (vsync),
             .de    (de)
         );
+
+        logic pixel_fifo_empty_read_;
+
+        always @(posedge pixel_clk) begin
+            if (~cc_rgb.valid && cc_rgb.ready) begin
+                pixel_fifo_empty_read_ <= 1;
+            end
+        end
+
+        cdc_single #(4, 1'b0) cdc_pfer (clk, pixel_fifo_empty_read_, pixel_fifo_empty_read);
     end
 
-    begin : wrapper_block
+    if (0) begin : wrapper_block
         logic start_d1;
         logic wrapper_s_valid;
 
@@ -351,10 +363,10 @@ module top (
             .SYNC_STAGES (2),
             .DEPTH       (4)
         ) addr_fifo (
+            .arst (rst | ddr3_rst),
+
             .s_clk (clk),
-            .s_rst (rst),
             .m_clk (ddr3_clk),
-            .m_rst (ddr3_rst),
 
             .s (addr_fifo_s),
             .m (addr_fifo_m)
@@ -364,10 +376,10 @@ module top (
             .SYNC_STAGES (2),
             .DEPTH       (64)
         ) data_fifo (
+            .arst (rst | ddr3_rst),
+
             .s_clk (clk),
-            .s_rst (rst),
             .m_clk (ddr3_clk),
-            .m_rst (ddr3_rst),
 
             .s (data_fifo_s),
             .m (data_fifo_m)
@@ -548,6 +560,7 @@ module top (
             .probe_in3   (center_x),
             .probe_in4   (center_y),
             .probe_in5   (xy_step),
+            .probe_in6   (pixel_fifo_empty_read),
 
             .probe_out0  (vio_xy_step),
             .probe_out1  (vio_xy_step_set),

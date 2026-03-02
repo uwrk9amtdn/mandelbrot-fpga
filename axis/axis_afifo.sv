@@ -1,3 +1,4 @@
+/*
 module axis_afifo #(
     int SYNC_STAGES = 2,
     int DEPTH       = 32
@@ -76,5 +77,61 @@ module axis_afifo #(
             m.valid <= 0;
         end
     end
+
+endmodule
+*/
+
+module axis_afifo #(
+    int SYNC_STAGES = 2,
+    int DEPTH       = 32
+)(
+    input arst,
+
+    input s_clk,
+    input m_clk,
+
+    axis_intf s,
+    axis_intf m
+);
+
+    if (s.DATA_WIDTH != m.DATA_WIDTH) begin
+        $error();
+    end
+
+    if (s.LAST_EN != m.LAST_EN) begin
+        $error();
+    end
+
+    xpm_fifo_axis #(
+        .CDC_SYNC_STAGES     (SYNC_STAGES),
+        .CLOCKING_MODE       ("independent_clock"),
+        .FIFO_DEPTH          (DEPTH),
+        .TDATA_WIDTH         (s.DATA_WIDTH)
+    ) xpm_fifo_axis_inst (
+        .s_aclk             (s_clk),
+        .m_aclk             (m_clk),
+
+        .s_aresetn          (~arst),
+
+        .s_axis_tready      (s.ready),
+        .s_axis_tvalid      (s.valid),
+        .s_axis_tdata       (s.data),
+        .s_axis_tdest       ('0),
+        .s_axis_tkeep       ('1),
+        .s_axis_tid         ('0),
+        .s_axis_tstrb       ('0),
+        .s_axis_tlast       (s.last),
+        .s_axis_tuser       ('0),
+
+        .m_axis_tready      (m.ready),
+        .m_axis_tvalid      (m.valid),
+        .m_axis_tdata       (m.data),
+        .m_axis_tdest       (),
+        .m_axis_tkeep       (),
+        .m_axis_tid         (),
+        .m_axis_tstrb       (),
+        .m_axis_tlast       (m.last),
+        .m_axis_tuser       ()
+    );
 
 endmodule

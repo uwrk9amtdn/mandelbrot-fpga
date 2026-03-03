@@ -57,6 +57,10 @@ module tb;
         );
     end
 
+    int pixel_fifo_size;
+    event inc_ev;
+    event dec_ev;
+
     initial begin
         clk_p = 1;
         clk_n = 0;
@@ -74,10 +78,34 @@ module tb;
                 clk_n <= ~clk_n;
             end
             begin
-                #100us;
+
+                wait (top.ddr3_calib_complete);
+
+                #20us;
+
                 top.start <= 1;
+
+                top.display_block.display_driver.line_counter_v <= 1123;
+
                 #100;
                 top.start <= 0;
+            end
+            forever begin
+                @(posedge top.ddr3_clk iff top.display_block.fifo_s.ready & top.display_block.fifo_s.valid);
+                -> inc_ev;
+            end
+            forever begin
+                @(posedge top.pixel_clk iff top.display_block.fifo_m.ready & top.display_block.fifo_m.valid);
+                -> dec_ev;
+            end
+            forever begin
+                @(inc_ev, dec_ev);
+                if (inc_ev.triggered) begin
+                    pixel_fifo_size += 1;
+                end
+                if (dec_ev.triggered) begin
+                    pixel_fifo_size -= 1;
+                end
             end
         join_any
     end

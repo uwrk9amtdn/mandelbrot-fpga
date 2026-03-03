@@ -238,15 +238,20 @@ module top (
     end
 
     begin : display_block
-        axis_intf #(16, 0) fifo_s ();
-        axis_intf #(16, 0) fifo_m ();
+        axis_intf #(64, 0) fifo_s ();
+        axis_intf #(64, 0) fifo_m ();
+
+        axis_intf #(64, 1) wc_s ();
+        axis_intf #(16, 1) wc_m ();
+
+        axis_intf #(16, 0) cc_it ();
+
+        axis_intf #(24, 0) cc_rgb ();
 
         logic mr_s_valid;
 
         logic vsync_synced;
         logic vsync_synced_d1;
-
-        axis_intf #(24, 0) cc_rgb ();
 
         assign cc_rgb.ready = de;
 
@@ -261,7 +266,7 @@ module top (
 
         always_ff @(posedge ddr3_clk) begin
             vsync_synced_d1 <= vsync_synced;
-            mr_s_valid      <= ~vsync_synced_d1 & vsync_synced;
+            mr_s_valid      <= vsync_synced_d1 & ~vsync_synced;
             if (ddr3_rst) begin
                 mr_s_valid      <= 0;
                 vsync_synced_d1 <= 0;
@@ -275,7 +280,7 @@ module top (
             .BURST_LENGTH (READER_BURST_LENGTH)
         ) mr (
             .clk     (ddr3_clk),
-            .rst     (ddr3_rst),
+            .rst     (ddr3_rst | vsync_synced),
 
             .s_ready (),
             .s_valid (mr_s_valid),
@@ -284,11 +289,14 @@ module top (
             .m_axis  (fifo_s)
         );
 
+        // TODO: use almost empty, almost full flags
+        // ping-pong buffer
+
         axis_afifo #(
             .SYNC_STAGES (2),
-            .DEPTH       (64)
+            .DEPTH       (512)
         ) afifo (
-            .arst (ddr3_rst),
+            .arst (ddr3_rst | vsync_synced),
 
             .s_clk (ddr3_clk),
             .m_clk (pixel_clk),
@@ -296,6 +304,17 @@ module top (
             .s (fifo_s),
             .m (fifo_m)
         );
+
+        axis_intf_connect con1 (fifo_m, wc_s);
+
+        axis_wc wc (
+            .clk (pixel_clk),
+            .rst (vsync),
+            .s   (wc_s),
+            .m   (wc_m)
+        );
+
+        axis_intf_connect con2 (wc_m, cc_it);
 
         logic [3:0] cc_start_index_;
         cdc_multi #(4, 4) cdc0 (clk, pixel_clk, cc_start_index, cc_start_index_);
@@ -306,7 +325,7 @@ module top (
 
             .start_index (cc_start_index_),
 
-            .s_axis_it   (fifo_m),
+            .s_axis_it   (cc_it),
 
             .m_axis_rgb  (cc_rgb)
         );
@@ -422,7 +441,7 @@ module top (
         rise_detector start_rd (clk, rst, start, wrapper_s_valid);
     end
 
-    begin : vio_block
+    if (0) begin : vio_block
         logic [2:-FRAC_WIDTH] vio_xy_step;
         logic                 vio_xy_step_set;
         logic                 vio_xy_step_shift_right;
@@ -582,6 +601,5 @@ module top (
             .probe_out14 (vio_cc_start_index)
         );
     end
-
 
 endmodule

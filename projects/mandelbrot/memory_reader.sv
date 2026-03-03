@@ -19,7 +19,7 @@ module memory_reader #(
         $error();
     end
 
-    if (m_axis.DATA_WIDTH != 16 || m_axis.LAST_EN != 0) begin
+    if (m_axis.DATA_WIDTH % 16 != 0 || m_axis.LAST_EN != 0) begin
         $error();
     end
 
@@ -34,7 +34,7 @@ module memory_reader #(
     logic [$clog2(NB)-1:0] ctr;
 
     axis_intf #(m_axi.DATA_WIDTH, 1) wc_s ();
-    axis_intf #(16, 1) wc_m ();
+    axis_intf #(m_axis.DATA_WIDTH, 1) wc_m ();
 
     assign wc_m.ready   = m_axis.ready;
     assign m_axis.valid = wc_m.valid;
@@ -47,7 +47,7 @@ module memory_reader #(
         .m   (wc_m)
     );
 
-    assign m_axi.rready = wc_s.ready;
+    assign m_axi.rready = rst ? 1'b1 : wc_s.ready;
     assign wc_s.valid   = m_axi.rvalid;
     assign wc_s.data    = m_axi.rdata;
     assign wc_s.last    = m_axi.rlast;
@@ -57,7 +57,7 @@ module memory_reader #(
     assign m_axi.arsize  = $clog2(m_axi.DATA_WIDTH / 8);
     assign m_axi.arburst = 1; // INCR
     assign m_axi.arlock  = 0;
-    assign m_axi.arcache = 0;
+    assign m_axi.arcache = 4'b0011;
     assign m_axi.arprot  = 0;
     assign m_axi.arqos   = 0;
 
@@ -94,7 +94,7 @@ module memory_reader #(
 
         if (rst) begin
             ctr           <= 0;
-            m_axi.arvalid <= 0;
+            m_axi.arvalid <= 0; // TODO: axi protocol violation
             state         <= READY;
         end
 

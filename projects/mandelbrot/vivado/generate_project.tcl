@@ -40,7 +40,6 @@ set design_files {
     ../../../third_party/verilog-axi/rtl/axi_adapter_rd.v
     ../../../third_party/verilog-axi/rtl/axi_adapter_wr.v
     ../../../third_party/verilog-axis/rtl/axis_adapter.v
-    ../../../third_party/wb2axip/rtl/afifo.v
 }
 
 set sim_files {

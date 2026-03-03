@@ -321,7 +321,7 @@ module top (
 
         color_converter cc(
             .clk         (pixel_clk),
-            .rst         ('0),
+            .rst         (vsync),
 
             .start_index (cc_start_index_),
 

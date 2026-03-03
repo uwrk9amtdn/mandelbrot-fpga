@@ -18,3 +18,5 @@ endinterface
 //     T          data;
 //     logic      last;
 // endinterface
+
+// TODO: protocol checking assertions https://developer.arm.com/documentation/dui0534/b/Protocol-Assertions-Descriptions/AXI4-Stream-protocol-assertion-descriptions?lang=en

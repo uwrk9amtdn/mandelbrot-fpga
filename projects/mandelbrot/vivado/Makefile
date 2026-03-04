@@ -1,7 +1,11 @@
 VIVADO ?= vivado
 
+export PRJ_DIR = $(abspath ../)
+export TOP_DIR = $(abspath ../../../)
+
 generate_project: generate_project.tcl
-	$(VIVADO) -mode batch -source generate_project.tcl
+	mkdir -p project/
+	cd project/ && $(VIVADO) -mode batch -source ../generate_project.tcl
 
 clean:
-	rm -rf *.log *.jou *.xpr *.cache *.hw *.ip_user_files .Xil *.gen *.runs *.sim *.srcs *.pb
+	rm -rf project/

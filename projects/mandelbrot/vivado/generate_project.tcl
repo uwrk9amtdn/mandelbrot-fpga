@@ -1,55 +1,58 @@
-create_project mandelbrot . -force
+create_project mandelbrot . -part xc7a200tfbg676-2 -force
 
 set_property board_part xilinx.com:ac701:part0:1.4 [current_project]
 
-set design_files {
-    ../top.sv
-    ../cfg.sv
-    ../wrapper.sv
-    ../core_wrapper.sv
-    ../core.sv
-    ../single_iteration.sv
-    ../color_converter.sv
-    ../memory_reader.sv
-    ../memory_writer.sv
-    ../../../memory_controllers/ddr3_intf.sv
-    ../../../memory_controllers/mig_ac701_axi_wrapper.sv
-    ../../../axis/axis_intf.sv
-    ../../../axis/axis_intf_connect.sv
-    ../../../axis/axis_wc.sv
-    ../../../axis/axis_afifo.sv
-    ../../../axis/axis_rr_arbiter.sv
-    ../../../axis/axis_rr_arbiter_tree.sv
-    ../../../axis/axis_skid_buffer.sv
-    ../../../hdmi/display_driver.sv
-    ../../../hdmi/ac701_adv7511_setup.sv
-    ../../../i2c/i2c_bit_ctrl.sv
-    ../../../i2c/i2c_byte_ctrl.sv
-    ../../../misc/clock_gen_7_series_pll.sv
-    ../../../misc/cdc_single.sv
-    ../../../misc/cdc_multi.sv
-    ../../../misc/cdc_handshake.sv
-    ../../../misc/power_on_reset.sv
-    ../../../misc/delayer.sv
-    ../../../misc/rise_detector.sv
-    ../../../axi/axi_intf.sv
-    ../../../axi/axi_wc.sv
-    ../../../arithmetic/constant_multiplier.sv
-    ../../../arithmetic/mul_dsp.sv
-    ../../../third_party/verilog-axi/rtl/axi_adapter.v
-    ../../../third_party/verilog-axi/rtl/axi_adapter_rd.v
-    ../../../third_party/verilog-axi/rtl/axi_adapter_wr.v
-    ../../../third_party/verilog-axis/rtl/axis_adapter.v
-}
+set PRJ_DIR $env(PRJ_DIR)
+set TOP_DIR $env(TOP_DIR)
 
-set sim_files {
-    ../tb.sv
-    ../../../memory_controllers/ddr3_sim_model/ddr3_model.sv
-}
+set design_files "
+    $PRJ_DIR/src/top.sv
+    $PRJ_DIR/src/cfg.sv
+    $PRJ_DIR/src/wrapper.sv
+    $PRJ_DIR/src/core_wrapper.sv
+    $PRJ_DIR/src/core.sv
+    $PRJ_DIR/src/single_iteration.sv
+    $PRJ_DIR/src/color_converter.sv
+    $PRJ_DIR/src/memory_reader.sv
+    $PRJ_DIR/src/memory_writer.sv
+    $TOP_DIR/memory_controllers/ddr3_intf.sv
+    $TOP_DIR/memory_controllers/mig_ac701_axi_wrapper.sv
+    $TOP_DIR/axis/axis_intf.sv
+    $TOP_DIR/axis/axis_intf_connect.sv
+    $TOP_DIR/axis/axis_wc.sv
+    $TOP_DIR/axis/axis_afifo.sv
+    $TOP_DIR/axis/axis_rr_arbiter.sv
+    $TOP_DIR/axis/axis_rr_arbiter_tree.sv
+    $TOP_DIR/axis/axis_skid_buffer.sv
+    $TOP_DIR/hdmi/display_driver.sv
+    $TOP_DIR/hdmi/ac701_adv7511_setup.sv
+    $TOP_DIR/i2c/i2c_bit_ctrl.sv
+    $TOP_DIR/i2c/i2c_byte_ctrl.sv
+    $TOP_DIR/misc/clock_gen_7_series_pll.sv
+    $TOP_DIR/misc/cdc_single.sv
+    $TOP_DIR/misc/cdc_multi.sv
+    $TOP_DIR/misc/cdc_handshake.sv
+    $TOP_DIR/misc/power_on_reset.sv
+    $TOP_DIR/misc/delayer.sv
+    $TOP_DIR/misc/rise_detector.sv
+    $TOP_DIR/axi/axi_intf.sv
+    $TOP_DIR/axi/axi_wc.sv
+    $TOP_DIR/arithmetic/constant_multiplier.sv
+    $TOP_DIR/arithmetic/mul_dsp.sv
+    $TOP_DIR/third_party/verilog-axi/rtl/axi_adapter.v
+    $TOP_DIR/third_party/verilog-axi/rtl/axi_adapter_rd.v
+    $TOP_DIR/third_party/verilog-axi/rtl/axi_adapter_wr.v
+    $TOP_DIR/third_party/verilog-axis/rtl/axis_adapter.v
+"
 
-set constraint_files {
+set sim_files "
+    $PRJ_DIR/src/tb.sv
+    $TOP_DIR/memory_controllers/ddr3_sim_model/ddr3_model.sv
+"
+
+set constraint_files "
     ../ac701.xdc
-}
+"
 
 create_ip -name vio -vendor xilinx.com -library ip -module_name vio_0
 
@@ -85,7 +88,7 @@ add_files $design_files
 add_files -fileset sim_1 $sim_files
 add_files -fileset constrs_1 $constraint_files
 
-import_files ../../../memory_controllers/mig_ac701_axi/mig_ac701_axi.xci
+import_files $TOP_DIR/memory_controllers/mig_ac701_axi/mig_ac701_axi.xci
 
 set_property top top [current_fileset]
 update_compile_order -fileset sources_1

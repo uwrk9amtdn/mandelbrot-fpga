@@ -1,4 +1,6 @@
 // q = a + alpha * (b - a)
+
+(* use_dsp = "yes" *)
 module linear_interpolator #(
     int INPUT_LATENCY  = 1,
     int OUTPUT_LATENCY = 1,
@@ -26,7 +28,7 @@ module linear_interpolator #(
 
     if (!SIGNED) begin
         always_comb begin
-            q_ = a_ + alpha_ + (b_ - a_);
+            q_ = a_ + alpha_ * (b_ - a_);
         end
     end
 
@@ -73,4 +75,19 @@ module linear_interpolator #(
 
     end
 
+endmodule
+
+module linear_interpolation(
+	input clk,
+	input [3:0] a, b,
+	input [-1:-4] alpha,
+	output reg [3:0] q
+);
+	wire [7:0] q_;
+
+	assign q_ = (a << 4) + (b - a) * alpha;
+
+	always @(posedge clk) begin
+		q <= q_[7:3];
+	end
 endmodule

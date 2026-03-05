@@ -380,7 +380,7 @@ module top (
 
         axis_afifo #(
             .SYNC_STAGES (2),
-            .DEPTH       (4)
+            .DEPTH       (16)
         ) addr_fifo (
             .arst (rst | ddr3_rst),
 

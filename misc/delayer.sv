@@ -2,7 +2,8 @@ module delayer #(
     WIDTH = 32,
     DELAY = 2
 )(
-    input clk,
+    input              clk,
+    input              rst,
     input  [WIDTH-1:0] i,
     output [WIDTH-1:0] o
 );
@@ -11,9 +12,12 @@ module delayer #(
     assign d[0] = i;
     assign o = d[DELAY];
 
-    always_ff @(posedge clk) begin
+    always @(posedge clk) begin
         for (int j = 0; j < DELAY; j++) begin
-            d[j+1] <= d[j];
+            if (rst)
+                d[j+1] <= 0;
+            else
+                d[j+1] <= d[j];
         end
     end
 

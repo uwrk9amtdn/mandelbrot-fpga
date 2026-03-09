@@ -33,8 +33,8 @@ module single_iteration #(
     mul_dsp #(3+FRAC_WIDTH, L, 1) m1 (clk, s_b, s_b, b2);
     mul_dsp #(3+FRAC_WIDTH, L, 1) m2 (clk, s_a, s_b, ab);
 
-    delayer #(3+FRAC_WIDTH, L + 1) d0 (clk, s_c, c);
-    delayer #(3+FRAC_WIDTH, L + 1) d1 (clk, s_d, d);
+    delayer #(3+FRAC_WIDTH, L + 1) d0 (clk, 1'b0, s_c, c);
+    delayer #(3+FRAC_WIDTH, L + 1) d1 (clk, 1'b0, s_d, d);
 
     logic signed [6:-2*FRAC_WIDTH] a2_plus_b2;
     logic signed [6:-2*FRAC_WIDTH] a2_minus_b2;

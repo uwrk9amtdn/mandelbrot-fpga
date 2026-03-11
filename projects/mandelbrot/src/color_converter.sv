@@ -17,6 +17,23 @@ module color_converter(
         $error();
     end
 
+    linear_interpolator #(
+        .SIGNED    (), // is a, b and q signed
+        .WIDTH     (), // data width
+        .PRECISION ()  // alpha fraction bits
+    ) li (
+        .clk         (clk), // input  logic
+        .rst         (rst), // input  logic
+
+        .s_valid     (), // input  logic
+        .s_a         (), // input  logic [WIDTH-1:0]
+        .s_b         (), // input  logic [WIDTH-1:0]
+        .s_alpha     (), // input  logic [-1:-PRECISION]
+
+        .m_valid     (), // output logic
+        .m_q         ()  // output logic [WIDTH-1:0]
+    );
+
     assign s_axis_it.ready = m_axis_rgb.ready;
 
     always_ff @(posedge clk) begin

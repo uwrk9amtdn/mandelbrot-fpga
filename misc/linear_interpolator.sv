@@ -38,8 +38,7 @@ module linear_interpolator #(
     assign b     = SIGNED ? {s_b[WIDTH-1], s_b} : {1'b0, s_b};
     assign alpha = {1'b0, s_alpha};
 
-    assign m_q     = q[WIDTH-1:0];
-    assign m_valid = valid_reg[2];
+    assign m_q   = q[WIDTH-1:0];
 
     always_ff @(posedge clk) begin
         a_reg     [0] <= a;
@@ -56,6 +55,7 @@ module linear_interpolator #(
         b_minus_a             <= b_reg[0] - a_reg[0];
         alpha_times_b_minus_a <= b_minus_a * alpha_reg[1];
         q                     <= signed'({a_reg[2], PRECISION'(0)}) + alpha_times_b_minus_a;
+        m_valid               <= valid_reg[2];
     end
 endmodule
 
@@ -82,16 +82,16 @@ module tb;
         .PRECISION (8)
     ) li ( .* );
 
-    function logic [7:0] calc(logic [7:0] a, logic [7:0] b, logic [-1:-8] alpha);
-        return signed'(a) + (signed'(b) - signed'(a)) * signed'({1'b0, alpha});
+    function int calc(real a, real b, real alpha);
+        return $rtoi($floor(a + (b - a) * alpha));
     endfunction
 
     property p;
-        logic [7:0] a, b;
-        logic [-1:-8] alpha;
-
+        int a, b, alpha;
         @(posedge clk) disable iff ($sampled(rst))
-        (s_valid, a = s_a, b = s_b, alpha = s_alpha) |-> ##4 (m_valid && m_q == calc(a, b, alpha), $display("a = %0d, b = %0d, alpha = %.2f, q = %d", signed'(a), signed'(b), signed'(alpha) / 256.0, signed'(m_q)))
+        (s_valid, a = signed'(s_a), b = signed'(s_b), alpha = s_alpha) |->
+            ##4 (m_valid, $display("a = %0d, b = %0d, alpha = %.2f, q = %0d, q_exp = %0d", a, b, alpha / 256.0, signed'(m_q), calc(a, b, alpha / 256.0)))
+            ##0 signed'(m_q) == calc(a, b, alpha / 256.0)
     endproperty
 
     assert property (p);
@@ -106,7 +106,7 @@ module tb;
 
         fork
             forever #5 clk <= ~clk;
-            repeat (100) begin
+            repeat (10000) begin
                 @(posedge clk);
                 s_valid <= $urandom;
                 s_a     <= $urandom;

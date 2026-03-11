@@ -10,11 +10,13 @@ module linear_interpolator #(
     input  logic                 clk,
     input  logic                 rst,
 
+    output logic                 s_ready,
     input  logic                 s_valid,
     input  logic [WIDTH-1:0]     s_a,
     input  logic [WIDTH-1:0]     s_b,
     input  logic [-1:-PRECISION] s_alpha,
 
+    input  logic                 m_ready,
     output logic                 m_valid,
     output logic [WIDTH-1:0]     m_q
 );
@@ -38,7 +40,9 @@ module linear_interpolator #(
     assign b     = SIGNED ? {s_b[WIDTH-1], s_b} : {1'b0, s_b};
     assign alpha = {1'b0, s_alpha};
 
-    assign m_q   = q[WIDTH-1:0];
+    assign m_q = q[WIDTH-1:0];
+
+    assign s_ready = m_ready;
 
     always_ff @(posedge clk) begin
         a_reg     [0] <= a;
@@ -56,6 +60,13 @@ module linear_interpolator #(
         alpha_times_b_minus_a <= b_minus_a * alpha_reg[1];
         q                     <= signed'({a_reg[2], PRECISION'(0)}) + alpha_times_b_minus_a;
         m_valid               <= valid_reg[2];
+
+        if (rst) begin
+            m_valid <= 0;
+            for (int i = 0; i < 3; i++) begin
+                valid_reg[i] <= 0;
+            end
+        end
     end
 endmodule
 

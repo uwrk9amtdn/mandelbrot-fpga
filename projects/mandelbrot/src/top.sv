@@ -64,7 +64,13 @@ module top (
     logic                        ddr3_calib_complete;
     logic                        adv7511_setup_error;
     logic                        adv7511_setup_done;
+
     logic [3:0]                  cc_start_index;
+    logic                        cc_two_color;
+    logic [23:0]                 cc_color_0;
+    logic [23:0]                 cc_color_1;
+    logic [23:0]                 cc_color_2;
+    logic [23:0]                 cc_color_3;
 
     logic pixel_fifo_empty_read;
 
@@ -316,14 +322,31 @@ module top (
 
         axis_intf_connect con2 (wc_m, cc_it);
 
-        logic [3:0] cc_start_index_;
-        cdc_multi #(4, 4) cdc0 (clk, pixel_clk, cc_start_index, cc_start_index_);
+        logic [3:0]  cc_start_index_;
+        logic        cc_two_color_;
+        logic [23:0] cc_color_0_;
+        logic [23:0] cc_color_1_;
+        logic [23:0] cc_color_2_;
+        logic [23:0] cc_color_3_;
+
+        cdc_multi  #(4, 4)    cdc0 (clk, pixel_clk, cc_start_index, cc_start_index_);
+        cdc_single #(4, 1'b1) cdc1 (pixel_clk, cc_two_color, cc_two_color_);
+        cdc_multi  #(4, 24)   cdc2 (clk, pixel_clk, cc_color_0,     cc_color_0_);
+        cdc_multi  #(4, 24)   cdc3 (clk, pixel_clk, cc_color_1,     cc_color_1_);
+        cdc_multi  #(4, 24)   cdc4 (clk, pixel_clk, cc_color_2,     cc_color_2_);
+        cdc_multi  #(4, 24)   cdc5 (clk, pixel_clk, cc_color_3,     cc_color_3_);
 
         color_converter cc(
             .clk         (pixel_clk),
             .rst         (vsync),
 
             .start_index (cc_start_index_),
+            .two_color   (cc_two_color_),
+
+            .color_0     (cc_color_0_),
+            .color_1     (cc_color_1_),
+            .color_2     (cc_color_2_),
+            .color_3     (cc_color_3_),
 
             .s_axis_it   (cc_it),
 
@@ -368,7 +391,7 @@ module top (
         cdc_single #(4, 1'b0) cdc_pfer (clk, pixel_fifo_empty_read_, pixel_fifo_empty_read);
     end
 
-    if (0) begin : wrapper_block
+    if (1) begin : wrapper_block
         logic start_d1;
         logic wrapper_s_valid;
 
@@ -441,7 +464,7 @@ module top (
         rise_detector start_rd (clk, rst, start, wrapper_s_valid);
     end
 
-    if (0) begin : vio_block
+    if (1) begin : vio_block
         logic [2:-FRAC_WIDTH] vio_xy_step;
         logic                 vio_xy_step_set;
         logic                 vio_xy_step_shift_right;
@@ -457,11 +480,21 @@ module top (
         logic                 vio_center_y_move_up;
         logic                 vio_center_y_move_down;
 
-        logic [3:0]           vio_cc_start_index;
         logic [15:0]          vio_max_it;
         logic                 vio_start;
+        logic [3:0]           vio_cc_start_index;
+        logic                 vio_cc_two_color;
+        logic [23:0]          vio_cc_color_0;
+        logic [23:0]          vio_cc_color_1;
+        logic [23:0]          vio_cc_color_2;
+        logic [23:0]          vio_cc_color_3;
 
         assign cc_start_index = vio_cc_start_index;
+        assign cc_two_color   = vio_cc_two_color;
+        assign cc_color_0     = vio_cc_color_0;
+        assign cc_color_1     = vio_cc_color_1;
+        assign cc_color_2     = vio_cc_color_2;
+        assign cc_color_3     = vio_cc_color_3;
         assign max_it         = vio_max_it;
         assign start          = vio_start;
 
@@ -598,7 +631,12 @@ module top (
 
             .probe_out12 (vio_max_it),
             .probe_out13 (vio_start),
-            .probe_out14 (vio_cc_start_index)
+            .probe_out14 (vio_cc_start_index),
+            .probe_out15 (vio_cc_two_color),
+            .probe_out16 (vio_cc_color_0),
+            .probe_out17 (vio_cc_color_1),
+            .probe_out18 (vio_cc_color_2),
+            .probe_out19 (vio_cc_color_3)
         );
     end
 

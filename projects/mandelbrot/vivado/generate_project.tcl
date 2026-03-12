@@ -35,6 +35,7 @@ set design_files "
     $TOP_DIR/misc/power_on_reset.sv
     $TOP_DIR/misc/delayer.sv
     $TOP_DIR/misc/rise_detector.sv
+    $TOP_DIR/misc/linear_interpolator.sv
     $TOP_DIR/axi/axi_intf.sv
     $TOP_DIR/axi/axi_wc.sv
     $TOP_DIR/arithmetic/constant_multiplier.sv
@@ -56,31 +57,60 @@ set constraint_files "
 
 create_ip -name vio -vendor xilinx.com -library ip -module_name vio_0
 
-set_property -dict [list \
-    CONFIG.C_NUM_PROBE_IN      {6} \
-    CONFIG.C_NUM_PROBE_OUT     {15} \
-    CONFIG.C_PROBE_IN0_WIDTH   {1} \
-    CONFIG.C_PROBE_IN1_WIDTH   {1} \
-    CONFIG.C_PROBE_IN2_WIDTH   {1} \
-    CONFIG.C_PROBE_IN3_WIDTH   {19} \
-    CONFIG.C_PROBE_IN4_WIDTH   {19} \
-    CONFIG.C_PROBE_IN5_WIDTH   {19} \
-    CONFIG.C_PROBE_OUT0_WIDTH  {19} \
-    CONFIG.C_PROBE_OUT1_WIDTH  {1} \
-    CONFIG.C_PROBE_OUT2_WIDTH  {1} \
-    CONFIG.C_PROBE_OUT3_WIDTH  {1} \
-    CONFIG.C_PROBE_OUT4_WIDTH  {19} \
-    CONFIG.C_PROBE_OUT5_WIDTH  {1} \
-    CONFIG.C_PROBE_OUT6_WIDTH  {1} \
-    CONFIG.C_PROBE_OUT7_WIDTH  {1} \
-    CONFIG.C_PROBE_OUT8_WIDTH  {19} \
-    CONFIG.C_PROBE_OUT9_WIDTH  {1} \
-    CONFIG.C_PROBE_OUT10_WIDTH {1} \
-    CONFIG.C_PROBE_OUT11_WIDTH {1} \
-    CONFIG.C_PROBE_OUT12_WIDTH {16} \
-    CONFIG.C_PROBE_OUT13_WIDTH {1} \
-    CONFIG.C_PROBE_OUT14_WIDTH {4} \
-] [get_ips vio_0]
+set_property -dict {
+    CONFIG.C_NUM_PROBE_IN      7
+    CONFIG.C_NUM_PROBE_OUT     20
+    CONFIG.C_PROBE_IN0_WIDTH   1
+    CONFIG.C_PROBE_IN1_WIDTH   1
+    CONFIG.C_PROBE_IN2_WIDTH   1
+    CONFIG.C_PROBE_IN3_WIDTH   19
+    CONFIG.C_PROBE_IN4_WIDTH   19
+    CONFIG.C_PROBE_IN5_WIDTH   19
+    CONFIG.C_PROBE_IN6_WIDTH   1
+    CONFIG.C_PROBE_OUT0_WIDTH  19
+    CONFIG.C_PROBE_OUT1_WIDTH  1
+    CONFIG.C_PROBE_OUT2_WIDTH  1
+    CONFIG.C_PROBE_OUT3_WIDTH  1
+    CONFIG.C_PROBE_OUT4_WIDTH  19
+    CONFIG.C_PROBE_OUT5_WIDTH  1
+    CONFIG.C_PROBE_OUT6_WIDTH  1
+    CONFIG.C_PROBE_OUT7_WIDTH  1
+    CONFIG.C_PROBE_OUT8_WIDTH  19
+    CONFIG.C_PROBE_OUT9_WIDTH  1
+    CONFIG.C_PROBE_OUT10_WIDTH 1
+    CONFIG.C_PROBE_OUT11_WIDTH 1
+    CONFIG.C_PROBE_OUT12_WIDTH 16
+    CONFIG.C_PROBE_OUT13_WIDTH 1
+    CONFIG.C_PROBE_OUT14_WIDTH 4
+    CONFIG.C_PROBE_OUT15_WIDTH 1
+    CONFIG.C_PROBE_OUT16_WIDTH 24
+    CONFIG.C_PROBE_OUT17_WIDTH 24
+    CONFIG.C_PROBE_OUT18_WIDTH 24
+    CONFIG.C_PROBE_OUT19_WIDTH 24
+} [get_ips vio_0]
+
+set_property -dict {
+    CONFIG.C_PROBE_OUT0_INIT_VAL  240
+    CONFIG.C_PROBE_OUT1_INIT_VAL  0
+    CONFIG.C_PROBE_OUT2_INIT_VAL  0
+    CONFIG.C_PROBE_OUT3_INIT_VAL  0
+    CONFIG.C_PROBE_OUT4_INIT_VAL  0
+    CONFIG.C_PROBE_OUT5_INIT_VAL  0
+    CONFIG.C_PROBE_OUT6_INIT_VAL  0
+    CONFIG.C_PROBE_OUT7_INIT_VAL  0
+    CONFIG.C_PROBE_OUT8_INIT_VAL  0
+    CONFIG.C_PROBE_OUT9_INIT_VAL  0
+    CONFIG.C_PROBE_OUT10_INIT_VAL 0
+    CONFIG.C_PROBE_OUT11_INIT_VAL 0
+    CONFIG.C_PROBE_OUT12_INIT_VAL 100
+    CONFIG.C_PROBE_OUT13_INIT_VAL 0
+    CONFIG.C_PROBE_OUT14_INIT_VAL 4
+    CONFIG.C_PROBE_OUT15_INIT_VAL 1
+    CONFIG.C_PROBE_OUT16_INIT_VAL 0xff0000
+    CONFIG.C_PROBE_OUT17_INIT_VAL 0x00ff00
+    CONFIG.C_PROBE_OUT18_INIT_VAL 0x0000ff
+    CONFIG.C_PROBE_OUT19_INIT_VAL 0xffff00
+} [get_ips vio_0]
 
 # generate_target all [get_ips vio_0]
 
@@ -92,3 +122,7 @@ import_files $TOP_DIR/memory_controllers/mig_ac701_axi/mig_ac701_axi.xci
 
 set_property top top [current_fileset]
 update_compile_order -fileset sources_1
+
+set_property strategy Flow_PerfOptimized_high [get_runs synth_1]
+set_property STEPS.SYNTH_DESIGN.ARGS.GLOBAL_RETIMING on [get_runs synth_1]
+set_property STEPS.SYNTH_DESIGN.ARGS.NO_SRLEXTRACT true [get_runs synth_1]

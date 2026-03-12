@@ -1,18 +1,18 @@
 module color_converter(
-    input         clk,
-    input         rst,
+    input        clk,
+    input        rst,
 
-    input [3:0]   start_index,
-    input         two_color,
+    input [3:0]  start_index,
+    input        two_color,
 
     input [23:0] color_0,
     input [23:0] color_1,
     input [23:0] color_2,
     input [23:0] color_3,
 
-    axis_intf     s_axis_it,
+    axis_intf    s_axis_it,
 
-    axis_intf     m_axis_rgb
+    axis_intf    m_axis_rgb
 );
 
     if (s_axis_it.DATA_WIDTH != 16 || m_axis_rgb.DATA_WIDTH != 24) begin
@@ -24,7 +24,7 @@ module color_converter(
     end
 
     logic [23:0] colors [4];
-    assign colors = '{color_3, color_2, color_1, color_0};
+    assign colors = '{color_0, color_1, color_2, color_3};
 
     logic [1:0] color_index;
     logic [1:0] color_index_a;
@@ -94,29 +94,31 @@ module color_converter(
         .m_q         (m_axis_rgb.data[16+:8])
     );
 
-    assign s_axis_it.ready = li_s_ready;
+    assign s_axis_it.ready = li_s_ready | ~li_s_valid;
 
-    logic [23:0] it_zero_padded;
-    assign it_zero_padded = {s_axis_it.data, 8'd0};
+    logic [25:0] it_zero_padded;
+    assign it_zero_padded = {2'd0, s_axis_it.data, 8'd0};
 
     logic       s_valid_reg [2];
     logic [7:0] alpha_reg   [2];
 
     always_ff @(posedge clk) begin
 
-        color_index   <= it_zero_padded[start_index+10-:2];
-        color_index_a <= (two_color ? 2'b01 : 2'b11) & (color_index);
-        color_index_b <= (two_color ? 2'b01 : 2'b11) & (color_index + 1);
-        a             <= colors[color_index_a];
-        b             <= colors[color_index_b];
+        if (li_s_ready | ~li_s_valid) begin
+            color_index   <= it_zero_padded[start_index+8+:2];
+            color_index_a <= (two_color ? 2'b01 : 2'b11) & (color_index);
+            color_index_b <= (two_color ? 2'b01 : 2'b11) & (color_index + 1);
+            a             <= colors[color_index_a];
+            b             <= colors[color_index_b];
 
-        alpha_reg[0] <= it_zero_padded[start_index+8-:8];
-        alpha_reg[1] <= alpha_reg[0];
-        alpha        <= alpha_reg[1];
+            alpha_reg[0] <= it_zero_padded[start_index+:8];
+            alpha_reg[1] <= alpha_reg[0];
+            alpha        <= alpha_reg[1];
 
-        s_valid_reg[0] <= s_axis_it.valid;
-        s_valid_reg[1] <= s_valid_reg[0];
-        li_s_valid     <= s_valid_reg[1];
+            s_valid_reg[0] <= s_axis_it.valid;
+            s_valid_reg[1] <= s_valid_reg[0];
+            li_s_valid     <= s_valid_reg[1];
+        end
 
         if (rst) begin
             li_s_valid     <= 0;

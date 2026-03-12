@@ -26,8 +26,8 @@ module linear_interpolator #(
     logic signed [0:-PRECISION]       alpha;
 
     logic signed [WIDTH:0]            a_reg     [3];
-    logic signed [WIDTH:0]            b_reg     [3];
-    logic signed [0:-PRECISION]       alpha_reg [3];
+    logic signed [WIDTH:0]            b_reg     [1];
+    logic signed [0:-PRECISION]       alpha_reg [2];
     logic                             valid_reg [3];
 
     logic signed [WIDTH+1:0]          b_minus_a;
@@ -42,34 +42,37 @@ module linear_interpolator #(
 
     assign m_q = q[WIDTH-1:0];
 
-    assign s_ready = m_ready;
+    assign s_ready = m_ready | ~m_valid;
 
     always_ff @(posedge clk) begin
-        a_reg     [0] <= a;
-        b_reg     [0] <= b;
-        alpha_reg [0] <= alpha;
-        valid_reg [0] <= s_valid;
-        for (int i = 0; i < 2; i++) begin
-            a_reg     [i+1] <= a_reg     [i];
-            b_reg     [i+1] <= b_reg     [i];
-            alpha_reg [i+1] <= alpha_reg [i];
-            valid_reg [i+1] <= valid_reg [i];
+        if (s_ready) begin
+            a_reg[0] <= a;
+            a_reg[1] <= a_reg[0];
+            a_reg[2] <= a_reg[1];
+
+            b_reg[0] <= b;
+
+            alpha_reg[0] <= alpha;
+            alpha_reg[1] <= alpha_reg[0];
+
+            valid_reg[0] <= s_valid;
+            valid_reg[1] <= valid_reg[0];
+            valid_reg[2] <= valid_reg[1];
+
+            b_minus_a             <= b_reg[0] - a_reg[0];
+            alpha_times_b_minus_a <= b_minus_a * alpha_reg[1];
+            q                     <= signed'({a_reg[2], {PRECISION{1'b0}}}) + alpha_times_b_minus_a;
+            m_valid               <= valid_reg[2];
         end
 
-        b_minus_a             <= b_reg[0] - a_reg[0];
-        alpha_times_b_minus_a <= b_minus_a * alpha_reg[1];
-        q                     <= signed'({a_reg[2], PRECISION'(0)}) + alpha_times_b_minus_a;
-        m_valid               <= valid_reg[2];
-
         if (rst) begin
-            m_valid <= 0;
-            for (int i = 0; i < 3; i++) begin
-                valid_reg[i] <= 0;
-            end
+            m_valid      <= 0;
+            valid_reg[0] <= 0;
+            valid_reg[1] <= 0;
+            valid_reg[2] <= 0;
         end
     end
 endmodule
-
 
 `ifdef TESTBENCH
 

@@ -1,0 +1,27 @@
+{
+  "DESIGN_NAME": "mandelbrot_asic",
+  "VERILOG_FILES": [
+    "dir::../src/cfg.sv",
+    "dir::../../../axis/axis_intf.sv",
+    "dir::../../../axis/axis_intf_connect.sv",
+    "dir::../../../axis/axis_skid_buffer.sv",
+    "dir::../../../axis/axis_rr_arbiter.sv",
+    "dir::../../../axis/axis_rr_arbiter_tree.sv",
+    "dir::../../../axis/axis_wc.sv",
+    "dir::../../../third_party/verilog-axis/rtl/axis_adapter.v",
+    "dir::../../../arithmetic/mul_dsp.sv",
+    "dir::../../../arithmetic/constant_multiplier.sv",
+    "dir::../../../misc/delayer.sv",
+    "dir::../src/single_iteration.sv",
+    "dir::../src/core.sv",
+    "dir::../src/core_wrapper.sv",
+    "dir::../src/wrapper.sv",
+    "dir::src/mandelbrot_asic.sv"
+  ],
+  "USE_SLANG": true,
+  "SYNTH_PARAMETERS": ["NCORES=4"],
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 20,
+  "FP_CORE_UTIL": 40,
+  "PL_TARGET_DENSITY_PCT": 50
+}

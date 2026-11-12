@@ -1,0 +1,17 @@
+[project]
+name = "mandelbrot-fpga-pc"
+version = "0.1.0"
+description = "PC application, protocol and simulated server for the FPGA Mandelbrot accelerator"
+requires-python = ">=3.11"
+dependencies = ["numpy>=2.0", "lz4>=4.3"]
+
+[project.optional-dependencies]
+# The viewer (milestone 2). The protocol, the simulated server and the tests don't need it.
+gui = ["imgui-bundle", "moderngl"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,6 +1,7 @@
 # Roadmap: Ethernet, 128-bit precision and better algorithms (DE25-Nano)
 
-Status: plan, nothing below is implemented yet. Starting point is the `de25-nano-port` branch:
+Status: phase 1 in progress (PC application milestone 1 is done, see
+[PC_APP_PLAN.md](PC_APP_PLAN.md)); the FPGA and HPS parts are not started. Starting point is the `de25-nano-port` branch:
 60 cores, FRAC 16 (19-bit fixed point), 198 MHz, HDMI output, UART control
 (see [DE25NANO_PORT_REPORT.md](DE25NANO_PORT_REPORT.md)).
 
@@ -21,7 +22,8 @@ Status: plan, nothing below is implemented yet. Starting point is the `de25-nano
 | Gigabit Ethernet PHY is wired to the HPS (EMAC0, RGMII) | user manual 3.8.2, GHRD `agilex_hps.ip` | Ethernet goes through Linux on the HPS. The FPGA talks to the HPS, not to the PHY. |
 | FPGA UART (FT4232H) is at most 12 Mbaud, about 1.2 MB/s | manual 3.8.3 | 1080p x 8 B = 16.6 MB takes 14 s per frame. Debug use only. |
 | HPS memory has to use LPDDR4A | manual 3.7.4 | The current design uses LPDDR4A for the framebuffer. Once the HPS is in, results go to HPS memory (shared with Linux), and the FPGA EMIF (EMIF_Qsys) is dropped. LPDDR4B stays free for later (reference orbits). |
-| GHRD exports `lwhps2fpga`, `hps2fpga`, `fpga2hps`, `f2sdram` | `Demonstration/SoC_FPGA/GHRD` (Quartus 25.1) | Registers go on `lwhps2fpga`, result writes on `f2sdram` (or the coherent `fpga2hps`). |
+| GHRD enables `lwhps2fpga` (32-bit data), `hps2fpga` (128), `fpga2hps` (256, ACE5-Lite, through a cache-coherency translator) and `f2sdram` (256-bit data, 32-bit address, through Terasic's `f2sdram_adapter`), all clocked at 100 MHz (`clk_100`, a PLL on CLOCK2_50). None is exported: inside `qsys_top` they go to PIOs, an on-chip RAM and JTAG masters. | `qsys_top.qsys`, `hps_subsys/ip/hps_subsys/agilex_hps.ip` (Quartus 25.1) | Registers go on `lwhps2fpga`, result writes on `f2sdram` (or the coherent `fpga2hps`). `qsys_top` has to be edited to export them (step 3). A 256-bit beat holds 4 result records. The GHRD's JTAG master on `f2sdram` and its PIOs on `lwhps2fpga` are enough for step 2, with no RTL of ours. |
+| The package has a prebuilt GHRD (`output_files/golden_top_hps.sof` and `.jic`, with the U-Boot SPL inside) | `Demonstration/SoC_FPGA/GHRD/output_files` | Step 1 needs no Quartus build. |
 | A Linux SD image exists | `de25_nano_sdcard_console_v1.1.zip` | No Yocto build needed to start. |
 | 188 DSP blocks give 188 27x27 multipliers; 358 M20K blocks (7.3 Mbit) | fit report | 128-bit cores are DSP-limited (about 5 cores). On-chip RAM limits the reference-orbit length for perturbation. |
 | 1 GbE is about 110 MB/s in practice | | About 6 frames/s of raw 1080p at 8 B/px, more with LZ4. At deep zoom the computation is far slower than that, so the link is not the bottleneck. |
@@ -227,7 +229,7 @@ Source: <https://en.wikipedia.org/wiki/Plotting_algorithms_for_the_Mandelbrot_se
 
 ### Phase 0: close the HDMI version
 
-- The 60-core/198 MHz work is committed. Test it on the board. It stays as a reference
+- Done: the 60-core/198 MHz work is committed and tested on the board. It stays as a reference
   (`De25NanoTop`).
 
 ### Phase 1: HPS + Ethernet with today's cores
@@ -247,6 +249,19 @@ The goal is the whole data path working end to end, with no new arithmetic yet.
    milestone 4; the disk cache and the tools come after it.
 7. A simulation testbench: `MandelbrotAccel` with `AxiMemorySim` as HPS memory and an AXI-Lite driver,
    compared against a Scala model of the whole image.
+
+**Where step 1 stands (2026-11-12): not started.** No Quartus build is needed: the package has a
+prebuilt GHRD (`Demonstration/SoC_FPGA/GHRD/output_files/golden_top_hps.sof` and `.jic`). Boot it
+with the SD image (`de25_nano_sdcard_console_v1.1.zip`), get Ethernet and ssh working, then collect
+the output of these on the board. It decides whether UIO and reserved memory work without a kernel
+rebuild, and what the `f2sdram` test of step 2 looks like:
+
+```
+uname -a; cat /proc/cmdline; free -m
+ls /sys/class/uio /dev/mem
+zcat /proc/config.gz | grep -E "CONFIG_UIO|DEVMEM|CMA"
+which devmem devmem2 gcc
+```
 
 Steps 1-2 hold the biggest unknowns (the HPS bridges, `f2sdram`, the kernel), and the PC application
 needs no board until its milestone 4. So start both at the same time.
@@ -295,7 +310,9 @@ per width, and no tuning for one more core.
 
 ## Open questions and risks
 
-- `f2sdram` data width and clock in the GHRD (not checked yet).
+- The bridge clock is 100 MHz and the cores run at 198 MHz, so the result writer and the register
+  block need a clock crossing. Whether `f2sdram` can be clocked at the core clock instead is not
+  checked.
 - Whether the SD image's kernel and device tree allow UIO and reserved memory without a rebuild.
   Fallback: `mem=` and `/dev/mem`.
 - GHRD made with Quartus 25.1; we use Quartus 26, so the IP may need upgrading (`qsys-generate --upgrade`).

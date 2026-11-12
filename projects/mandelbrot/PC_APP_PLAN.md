@@ -1,6 +1,7 @@
 # Plan: communication protocol and PC application
 
-Part of [ROADMAP.md](ROADMAP.md), phase 1. Status: plan, nothing implemented yet.
+Part of [ROADMAP.md](ROADMAP.md), phase 1. Status: milestone 1 is done (`pc/`: `protocol.py`,
+`sim_server.py` in fast mode, `net.py`, `view.py`, `headless.py`, tests); the viewer is next.
 
 The PC application (the client) tiles the screen, sends tile requests to the board, receives
 iteration counts and does all the colouring. On the board, the HPS server `mandelbrotd` passes each
@@ -34,7 +35,7 @@ every request is self-contained.
 
   | Field | Type | Meaning |
   |---|---|---|
-  | magic | u32 | `'MBRT'` |
+  | magic | 4 bytes | `MBRT`, in this order on the wire |
   | type | u16 | message type, see the table below |
   | flags | u16 | 0 for now |
   | length | u32 | payload size in bytes |
@@ -78,8 +79,8 @@ every request is self-contained.
     That way a continuous drag at deep zoom, where a tile takes seconds, still makes progress.
   - A change of max_it or of a result-changing flag cancels everything (count 0).
   - For each id in a CANCEL, the server drops the request if it is still queued on the HPS, or
-    aborts its FPGA job, and answers with a TILE of status "aborted" and no data. Ids it doesn't
-    know (already answered) are ignored.
+    aborts its FPGA job, and answers at once with a TILE of status "aborted", no data, and width and
+    height 0. Ids it doesn't know (already answered) are ignored.
   - Request ids are never reused, so there is no race between a CANCEL and a TILE already on the
     way, and no acknowledgement is needed: a complete TILE that arrives after its cancel is still a
     valid tile, and goes into the cache.
@@ -91,8 +92,10 @@ every request is self-contained.
   simulated fast/exact mode). The FPGA has it as a constant register, computed by the generator from
   the configuration. The cache uses it, so tiles from one build or from the simulated server are
   never shown as results of another.
-- **Errors:** bad tile size, max_it too large, unknown flags, protocol version mismatch (sent in reply
-  to HELLO).
+- **Errors,** by code: 1 protocol version not supported (in reply to HELLO; the server then closes),
+  2 bad tile size, 3 bad max_it, 4 unknown flag or a feature the server lacks, 5 more requests in
+  flight than INFO allows, 6 request id 0 or already in flight, 7 the tile doesn't fit W bits,
+  8 malformed message. An ERROR that names a request ends that request.
 - **A future version** adds message types for perturbation (reference orbit upload, delta tiles).
   HELLO/INFO negotiate the version.
 
@@ -171,6 +174,12 @@ no matter how the view got there.
 - **Zoom limit:** when step(L) reaches a few ulps, for example step < 2^4, the view shows "hardware
   precision limit (W bits)" and stops zooming. Below that, the rounding of step(L) makes the levels uneven, and the
   arithmetic's own rounding error approaches the pixel size.
+- **Zoom-out limit and tiles outside the format:** the format holds |c| < 2^(I−1), and a tile whose
+  pixels don't all fit can't be requested (the server answers with error 7). The client fills such
+  a tile in itself: every pixel escapes at n = 1 with |z|² = |c|², which is right as long as all
+  of the tile has |c| ≥ R. That holds if a tile is no wider than 2^(I−1) − R, which sets the
+  lowest level: 0 for I = 10, but 9 for the phase 1 hardware (I = 5, R = 2), whose levels are
+  9..40.
 - **Zoom history:** Backspace returns to the previous view.
 
 ### Tiling and display
@@ -331,8 +340,9 @@ level above and below around the cursor.
 
 ## 5. Milestones
 
-1. **Protocol and simulated server:** `protocol.py`, `sim_server.py` (fast mode), and a headless
-   client test that renders a full view and compares it with numpy.
+1. **Protocol and simulated server (done):** `protocol.py`, `sim_server.py` (fast mode), and a
+   headless client test that renders a full view and compares it with numpy. `headless.py` also
+   renders a view to a PNG from the shell, which is the first thing to run against the board.
 2. **Viewer:** window, textures, escape-time colouring, the global lattice and tile grid, previews,
    cancelling and flow control, zoom and pan with the mouse.
 3. **Colouring:** smooth, log-smooth, histogram, HSV/LCH, palettes and the gradient editor, panels.

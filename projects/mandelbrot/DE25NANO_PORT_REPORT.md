@@ -4,7 +4,7 @@ Date: 2026-11-11
 
 The mandelbrot design is ported from the Xilinx AC701 to the Terasic DE25-Nano (Agilex 5,
 A5EB013BB23BE4SCS), entirely in SpinalHDL. It passes all simulation tests and compiles in Quartus
-Pro 26 (`module load quartus_26`) with timing met. It has **not been tried on the board yet**.
+Pro 26 (`module load quartus_26`) with timing met. It was **tested on the board and works** (2026-11-12).
 
 - RTL: `projects/mandelbrot/spinal/`
 - Quartus flow: `projects/mandelbrot/quartus/`
@@ -119,7 +119,9 @@ Generic blocks are in the repo-level library `spinal/` (package `fpgalib`); the 
     asynchronous clock groups. Functionally covered by the Spinal CDC blocks; optional to tighten.
   - Unconstrained JTAG clock (`altera_reserved_tck`).
 
-## Still to check on the board
+## HDMI clock margin
+
+The design works on the board as it is. For reference:
 
 - HDMI clock: the pixel clock goes straight to `HDMI_TX_CLK`, as in Terasic's demo, which leaves
   little hold margin. If the picture shows sparkles or wrong colors, change the ADV7513 clock delay

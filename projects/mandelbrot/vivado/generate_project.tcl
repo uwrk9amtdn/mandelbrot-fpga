@@ -15,31 +15,31 @@ set design_files "
     $PRJ_DIR/src/color_converter.sv
     $PRJ_DIR/src/memory_reader.sv
     $PRJ_DIR/src/memory_writer.sv
-    $TOP_DIR/memory_controllers/ddr3_intf.sv
-    $TOP_DIR/memory_controllers/mig_ac701_axi_wrapper.sv
-    $TOP_DIR/axis/axis_intf.sv
-    $TOP_DIR/axis/axis_intf_connect.sv
-    $TOP_DIR/axis/axis_wc.sv
-    $TOP_DIR/axis/axis_afifo.sv
-    $TOP_DIR/axis/axis_rr_arbiter.sv
-    $TOP_DIR/axis/axis_rr_arbiter_tree.sv
-    $TOP_DIR/axis/axis_skid_buffer.sv
-    $TOP_DIR/hdmi/display_driver.sv
-    $TOP_DIR/hdmi/ac701_adv7511_setup.sv
-    $TOP_DIR/i2c/i2c_bit_ctrl.sv
-    $TOP_DIR/i2c/i2c_byte_ctrl.sv
-    $TOP_DIR/misc/clock_gen_7_series_pll.sv
-    $TOP_DIR/misc/cdc_single.sv
-    $TOP_DIR/misc/cdc_multi.sv
-    $TOP_DIR/misc/cdc_handshake.sv
-    $TOP_DIR/misc/power_on_reset.sv
-    $TOP_DIR/misc/delayer.sv
-    $TOP_DIR/misc/rise_detector.sv
-    $TOP_DIR/misc/linear_interpolator.sv
-    $TOP_DIR/axi/axi_intf.sv
-    $TOP_DIR/axi/axi_wc.sv
-    $TOP_DIR/arithmetic/constant_multiplier.sv
-    $TOP_DIR/arithmetic/mul_dsp.sv
+    $TOP_DIR/sv/memory_controllers/ddr3_intf.sv
+    $TOP_DIR/sv/memory_controllers/mig_ac701_axi_wrapper.sv
+    $TOP_DIR/sv/axis/axis_intf.sv
+    $TOP_DIR/sv/axis/axis_intf_connect.sv
+    $TOP_DIR/sv/axis/axis_wc.sv
+    $TOP_DIR/sv/axis/axis_afifo.sv
+    $TOP_DIR/sv/axis/axis_rr_arbiter.sv
+    $TOP_DIR/sv/axis/axis_rr_arbiter_tree.sv
+    $TOP_DIR/sv/axis/axis_skid_buffer.sv
+    $TOP_DIR/sv/hdmi/display_driver.sv
+    $TOP_DIR/sv/hdmi/ac701_adv7511_setup.sv
+    $TOP_DIR/sv/i2c/i2c_bit_ctrl.sv
+    $TOP_DIR/sv/i2c/i2c_byte_ctrl.sv
+    $TOP_DIR/sv/misc/clock_gen_7_series_pll.sv
+    $TOP_DIR/sv/misc/cdc_single.sv
+    $TOP_DIR/sv/misc/cdc_multi.sv
+    $TOP_DIR/sv/misc/cdc_handshake.sv
+    $TOP_DIR/sv/misc/power_on_reset.sv
+    $TOP_DIR/sv/misc/delayer.sv
+    $TOP_DIR/sv/misc/rise_detector.sv
+    $TOP_DIR/sv/misc/linear_interpolator.sv
+    $TOP_DIR/sv/axi/axi_intf.sv
+    $TOP_DIR/sv/axi/axi_wc.sv
+    $TOP_DIR/sv/arithmetic/constant_multiplier.sv
+    $TOP_DIR/sv/arithmetic/mul_dsp.sv
     $TOP_DIR/third_party/verilog-axi/rtl/axi_adapter.v
     $TOP_DIR/third_party/verilog-axi/rtl/axi_adapter_rd.v
     $TOP_DIR/third_party/verilog-axi/rtl/axi_adapter_wr.v
@@ -48,7 +48,7 @@ set design_files "
 
 set sim_files "
     $PRJ_DIR/src/tb.sv
-    $TOP_DIR/memory_controllers/ddr3_sim_model/ddr3_model.sv
+    $TOP_DIR/sv/memory_controllers/ddr3_sim_model/ddr3_model.sv
 "
 
 set constraint_files "
@@ -118,7 +118,7 @@ add_files $design_files
 add_files -fileset sim_1 $sim_files
 add_files -fileset constrs_1 $constraint_files
 
-import_files $TOP_DIR/memory_controllers/mig_ac701_axi/mig_ac701_axi.xci
+import_files $TOP_DIR/sv/memory_controllers/mig_ac701_axi/mig_ac701_axi.xci
 
 set_property top top [current_fileset]
 update_compile_order -fileset sources_1

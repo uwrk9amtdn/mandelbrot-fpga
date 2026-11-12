@@ -70,7 +70,7 @@ The tool versions are fixed by the commit checked out in `~/librelane`. To chang
 
 ## Step 3 — Fetch the required submodule
 
-`axis/axis_wc.sv` instantiates `axis_adapter` from `third_party/verilog-axis`, which isn't checked out yet. The core path needs no other submodule.
+`sv/axis/axis_wc.sv` instantiates `axis_adapter` from `third_party/verilog-axis`, which isn't checked out yet. The core path needs no other submodule.
 
 ```bash
 cd ~/Desktop/work-github/mandelbrot-fpga
@@ -157,10 +157,10 @@ cd ~/Desktop/work-github/mandelbrot-fpga
 verilator --lint-only -Wno-fatal -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC \
   -Wno-PINCONNECTEMPTY -Wno-PINMISSING -Wno-UNUSEDSIGNAL -Wno-GENUNNAMED \
   --top-module mandelbrot_asic \
-  projects/mandelbrot/src/cfg.sv axis/axis_intf.sv axis/axis_intf_connect.sv \
-  axis/axis_skid_buffer.sv axis/axis_rr_arbiter.sv axis/axis_rr_arbiter_tree.sv \
-  axis/axis_wc.sv third_party/verilog-axis/rtl/axis_adapter.v \
-  arithmetic/mul_dsp.sv arithmetic/constant_multiplier.sv misc/delayer.sv \
+  projects/mandelbrot/src/cfg.sv sv/axis/axis_intf.sv sv/axis/axis_intf_connect.sv \
+  sv/axis/axis_skid_buffer.sv sv/axis/axis_rr_arbiter.sv sv/axis/axis_rr_arbiter_tree.sv \
+  sv/axis/axis_wc.sv third_party/verilog-axis/rtl/axis_adapter.v \
+  sv/arithmetic/mul_dsp.sv sv/arithmetic/constant_multiplier.sv sv/misc/delayer.sv \
   projects/mandelbrot/src/single_iteration.sv projects/mandelbrot/src/core.sv \
   projects/mandelbrot/src/core_wrapper.sv projects/mandelbrot/src/wrapper.sv \
   projects/mandelbrot/asic/src/mandelbrot_asic.sv
@@ -177,16 +177,16 @@ Save as `projects/mandelbrot/asic/config.json`. The `dir::` prefix makes each pa
   "DESIGN_NAME": "mandelbrot_asic",
   "VERILOG_FILES": [
     "dir::../src/cfg.sv",
-    "dir::../../../axis/axis_intf.sv",
-    "dir::../../../axis/axis_intf_connect.sv",
-    "dir::../../../axis/axis_skid_buffer.sv",
-    "dir::../../../axis/axis_rr_arbiter.sv",
-    "dir::../../../axis/axis_rr_arbiter_tree.sv",
-    "dir::../../../axis/axis_wc.sv",
+    "dir::../../../sv/axis/axis_intf.sv",
+    "dir::../../../sv/axis/axis_intf_connect.sv",
+    "dir::../../../sv/axis/axis_skid_buffer.sv",
+    "dir::../../../sv/axis/axis_rr_arbiter.sv",
+    "dir::../../../sv/axis/axis_rr_arbiter_tree.sv",
+    "dir::../../../sv/axis/axis_wc.sv",
     "dir::../../../third_party/verilog-axis/rtl/axis_adapter.v",
-    "dir::../../../arithmetic/mul_dsp.sv",
-    "dir::../../../arithmetic/constant_multiplier.sv",
-    "dir::../../../misc/delayer.sv",
+    "dir::../../../sv/arithmetic/mul_dsp.sv",
+    "dir::../../../sv/arithmetic/constant_multiplier.sv",
+    "dir::../../../sv/misc/delayer.sv",
     "dir::../src/single_iteration.sv",
     "dir::../src/core.sv",
     "dir::../src/core_wrapper.sv",

@@ -4,10 +4,10 @@ create_project UberDDR3_test . -part $part -force
 
 set design_files {
     ../top.sv
-    ../../../axi/axi_intf.sv
-    ../../../memory_controllers/ddr3_intf.sv
-    ../../../memory_controllers/uberddr3_wrapper_axi.sv
-    ../../../misc/clock_gen_7_series_pll.sv
+    ../../../sv/axi/axi_intf.sv
+    ../../../sv/memory_controllers/ddr3_intf.sv
+    ../../../sv/memory_controllers/uberddr3_wrapper_axi.sv
+    ../../../sv/misc/clock_gen_7_series_pll.sv
     ../../../third_party/UberDDR3/rtl/ddr3_top.v
     ../../../third_party/UberDDR3/rtl/ddr3_phy.v
     ../../../third_party/UberDDR3/rtl/ddr3_controller.v
@@ -23,7 +23,7 @@ set design_files {
 
 set sim_files {
     ../tb.sv
-    ../../../memory_controllers/ddr3_sim_model/ddr3_model.sv
+    ../../../sv/memory_controllers/ddr3_sim_model/ddr3_model.sv
 }
 
 set constraint_files {

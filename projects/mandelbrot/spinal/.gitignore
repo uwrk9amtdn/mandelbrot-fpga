@@ -1,0 +1,13 @@
+target/
+project/target/
+project/project/
+gen/
+simWorkspace/
+cosim/build/
+.bsp/
+cosim/build_wrapper/
+cosim/build_parts/
+.metals/
+.bloop/
+project/.bloop/
+project/metals.sbt

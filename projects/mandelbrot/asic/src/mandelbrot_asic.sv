@@ -7,24 +7,24 @@ module mandelbrot_asic #(
     parameter int          BURST_LENGTH      = 16,
     parameter logic [31:0] FB_START_ADDR     = 0
 )(
-    input  logic                 clk,
-    input  logic                 rst,
+    input  logic                  clk,
+    input  logic                  rst,
 
-    output logic                 s_ready,
-    input  logic                 s_valid,
-    input  logic [15:0]          s_max_it,
-    input  logic [2:-FRAC_WIDTH] s_center_x,
-    input  logic [2:-FRAC_WIDTH] s_center_y,
-    input  logic [2:-FRAC_WIDTH] s_xy_step,
+    output logic                  s_ready,
+    input  logic                  s_valid,
+    input  logic [15:0]           s_max_it,
+    input  logic [FRAC_WIDTH+2:0] s_center_x,
+    input  logic [FRAC_WIDTH+2:0] s_center_y,
+    input  logic [FRAC_WIDTH+2:0] s_xy_step,
 
-    input  logic                 m_addr_ready,
-    output logic                 m_addr_valid,
-    output logic [31:0]          m_addr_data,
+    input  logic                  m_addr_ready,
+    output logic                  m_addr_valid,
+    output logic [31:0]           m_addr_data,
 
-    input  logic                 m_data_ready,
-    output logic                 m_data_valid,
-    output logic [15:0]          m_data_data,
-    output logic                 m_data_last
+    input  logic                  m_data_ready,
+    output logic                  m_data_valid,
+    output logic [15:0]           m_data_data,
+    output logic                  m_data_last
 );
 
     axis_intf #(32, 0) m_addr ();

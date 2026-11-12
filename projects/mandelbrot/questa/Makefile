@@ -5,7 +5,7 @@ VLOG := vlog -lint -pedanticerrors
 
 SOURCES := \
 	../tb.sv                                                  \
-	../../../memory_controllers/ddr3_sim_model/ddr3_model.sv  \
+	../../../sv/memory_controllers/ddr3_sim_model/ddr3_model.sv  \
 	../top.sv                                                 \
 	../cfg.sv                                                 \
 	../single_iteration.sv                                    \
@@ -15,27 +15,27 @@ SOURCES := \
 	../color_converter.sv                                     \
 	../memory_reader.sv                                       \
 	../memory_writer.sv                                       \
-	../../../memory_controllers/ddr3_intf.sv                  \
-	../../../memory_controllers/uberddr3_wrapper_axi.sv       \
-	../../../axis/axis_intf.sv                                \
-	../../../axis/axis_intf_connect.sv                        \
-	../../../axis/axis_wc.sv                                  \
-	../../../axis/axis_afifo.sv                               \
-	../../../axis/axis_rr_arbiter.sv                          \
-	../../../axis/axis_rr_arbiter_tree.sv                     \
-	../../../axis/axis_skid_buffer.sv                         \
-	../../../hdmi/display_driver.sv                           \
-	../../../hdmi/ac701_adv7511_setup.sv                      \
-	../../../i2c/i2c_bit_ctrl.sv                              \
-	../../../i2c/i2c_byte_ctrl.sv                             \
-	../../../misc/clock_gen_7_series_pll.sv                   \
-	../../../misc/cdc_single.sv                               \
-	../../../misc/power_on_reset.sv                           \
-	../../../misc/delayer.sv                                  \
-	../../../axi/axi_intf.sv                                  \
-	../../../axi/axi_wc.sv                                    \
-	../../../arithmetic/constant_multiplier.sv                \
-	../../../arithmetic/mul_dsp.sv                            \
+	../../../sv/memory_controllers/ddr3_intf.sv                  \
+	../../../sv/memory_controllers/uberddr3_wrapper_axi.sv       \
+	../../../sv/axis/axis_intf.sv                                \
+	../../../sv/axis/axis_intf_connect.sv                        \
+	../../../sv/axis/axis_wc.sv                                  \
+	../../../sv/axis/axis_afifo.sv                               \
+	../../../sv/axis/axis_rr_arbiter.sv                          \
+	../../../sv/axis/axis_rr_arbiter_tree.sv                     \
+	../../../sv/axis/axis_skid_buffer.sv                         \
+	../../../sv/hdmi/display_driver.sv                           \
+	../../../sv/hdmi/ac701_adv7511_setup.sv                      \
+	../../../sv/i2c/i2c_bit_ctrl.sv                              \
+	../../../sv/i2c/i2c_byte_ctrl.sv                             \
+	../../../sv/misc/clock_gen_7_series_pll.sv                   \
+	../../../sv/misc/cdc_single.sv                               \
+	../../../sv/misc/power_on_reset.sv                           \
+	../../../sv/misc/delayer.sv                                  \
+	../../../sv/axi/axi_intf.sv                                  \
+	../../../sv/axi/axi_wc.sv                                    \
+	../../../sv/arithmetic/constant_multiplier.sv                \
+	../../../sv/arithmetic/mul_dsp.sv                            \
     ../../../third_party/UberDDR3/rtl/ddr3_top.v              \
     ../../../third_party/UberDDR3/rtl/ddr3_phy.v              \
     ../../../third_party/UberDDR3/rtl/ddr3_controller.v       \

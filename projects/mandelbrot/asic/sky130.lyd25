@@ -1,0 +1,15 @@
+# poly / local interconnect
+z(input(66, 20), zstart: 0.33, height: 0.18, name: "poly")
+z(input(66, 44), zstart: 0.51, zstop: 0.94,  name: "licon")
+z(input(67, 20), zstart: 0.94, height: 0.10, name: "li1")
+z(input(67, 44), zstart: 1.04, zstop: 1.38,  name: "mcon")
+# metals + vias
+z(input(68, 20), zstart: 1.38, height: 0.36,  name: "met1")
+z(input(68, 44), zstart: 1.74, zstop: 2.00,   name: "via")
+z(input(69, 20), zstart: 2.00, height: 0.36,  name: "met2")
+z(input(69, 44), zstart: 2.36, zstop: 2.79,   name: "via2")
+z(input(70, 20), zstart: 2.79, height: 0.845, name: "met3")
+z(input(70, 44), zstart: 3.635, zstop: 4.02,  name: "via3")
+z(input(71, 20), zstart: 4.02, height: 0.845, name: "met4")
+z(input(71, 44), zstart: 4.865, zstop: 5.37,  name: "via4")
+z(input(72, 20), zstart: 5.37, height: 1.26,  name: "met5")

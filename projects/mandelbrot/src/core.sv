@@ -61,8 +61,11 @@ module core #(
 
     assign msi_s_a  = state == LOAD ? 0 : msi_m_a;
     assign msi_s_b  = state == LOAD ? 0 : msi_m_b;
-    assign msi_s_c  = x_mem[ptr];
-    assign msi_s_d  = y_mem[ptr];
+    // During LOAD, x_mem/y_mem[ptr] is written at the end of this cycle, so a read
+    // would return the previous batch's point: feed the incoming point directly.
+    // Assumes s_valid stays high for N consecutive cycles once a batch starts.
+    assign msi_s_c  = state == LOAD ? s_x : x_mem[ptr];
+    assign msi_s_d  = state == LOAD ? s_y : y_mem[ptr];
 
     assign s_ready     = state == LOAD;
 

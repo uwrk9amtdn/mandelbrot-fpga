@@ -1,0 +1,9 @@
+target/
+project/target/
+project/project/
+simWorkspace/
+.bsp/
+.metals/
+.bloop/
+project/.bloop/
+project/metals.sbt

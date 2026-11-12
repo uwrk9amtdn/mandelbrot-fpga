@@ -4,15 +4,15 @@ create_project hdmi_test . -part $part -force
 
 set design_files {
     ../top.sv
-    ../../../axis/axis_intf.sv
-    ../../../misc/cdc_single.sv
-    ../../../misc/cdc_handshake.sv
-    ../../../misc/cdc_multi.sv
-    ../../../hdmi/ac701_adv7511_setup.sv
-    ../../../hdmi/display_driver.sv
-    ../../../i2c/i2c_bit_ctrl.sv
-    ../../../i2c/i2c_byte_ctrl.sv
-    ../../../misc/clock_gen_7_series_pll.sv
+    ../../../sv/axis/axis_intf.sv
+    ../../../sv/misc/cdc_single.sv
+    ../../../sv/misc/cdc_handshake.sv
+    ../../../sv/misc/cdc_multi.sv
+    ../../../sv/hdmi/ac701_adv7511_setup.sv
+    ../../../sv/hdmi/display_driver.sv
+    ../../../sv/i2c/i2c_bit_ctrl.sv
+    ../../../sv/i2c/i2c_byte_ctrl.sv
+    ../../../sv/misc/clock_gen_7_series_pll.sv
 }
 
 set constraint_files {

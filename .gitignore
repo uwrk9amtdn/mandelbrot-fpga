@@ -1,0 +1,4 @@
+# editor / Scala tooling caches
+.metals/
+.bloop/
+.scala-build/

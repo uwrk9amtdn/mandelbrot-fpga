@@ -6,12 +6,12 @@ VLOG := vlog
 SOURCES := \
     ../tb.sv                                                 \
     ../top.sv                                                \
-    ../../../memory_controllers/ddr3_sim_model/ddr3_model.sv \
-    ../../../axi/axi_intf.sv                                 \
-    ../../../memory_controllers/ddr3_intf.sv                 \
-    ../../../memory_controllers/uberddr3_wrapper_axi.sv      \
-    ../../../misc/clock_gen_7_series_pll.sv                  \
-    ../../../misc/power_on_reset.sv                          \
+    ../../../sv/memory_controllers/ddr3_sim_model/ddr3_model.sv \
+    ../../../sv/axi/axi_intf.sv                                 \
+    ../../../sv/memory_controllers/ddr3_intf.sv                 \
+    ../../../sv/memory_controllers/uberddr3_wrapper_axi.sv      \
+    ../../../sv/misc/clock_gen_7_series_pll.sv                  \
+    ../../../sv/misc/power_on_reset.sv                          \
     ../../../third_party/UberDDR3/rtl/ddr3_top.v             \
     ../../../third_party/UberDDR3/rtl/ddr3_phy.v             \
     ../../../third_party/UberDDR3/rtl/ddr3_controller.v      \

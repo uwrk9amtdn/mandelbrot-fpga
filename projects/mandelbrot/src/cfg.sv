@@ -1,3 +1,3 @@
 package cfg;
-    localparam SI_LATENCY = 4;
+    localparam SI_LATENCY = 8;
 endpackage

@@ -6,12 +6,17 @@
 #   make verilog    only regenerate build/sp_De25NanoTop.v
 #   make clean
 #
-# Options (make VAR=value): CORE_MHZ, NCORES, FRAC_WIDTH, DE25_DIR
+# Options (make VAR=value): CORE_MHZ, NCORES, FRAC_WIDTH, SI_LATENCY, DE25_DIR
 
 DE25_DIR   ?= $(HOME)/Desktop/fpga/de25nano/DE25-Nano_revB_v.1.0.0_ResourcePackage
-CORE_MHZ   ?= 99
-NCORES     ?= 54
+CORE_MHZ   ?= 198
+NCORES     ?= 60
+# 16 -> 19x19 multipliers, one per DSP block: the device has 188, so at most 62 cores (3 per core).
+# 15 -> 18x18, two per DSP block.
 FRAC_WIDTH ?= 16
+# Iteration pipeline depth (multiplier latency = SI_LATENCY - 2). Lower = fewer registers per core,
+# higher = easier timing.
+SI_LATENCY ?= 8
 
 PART       := A5EB013BB23BE4SCS
 BUILD      := build
@@ -28,7 +33,7 @@ verilog: $(BUILD)/sp_De25NanoTop.v
 $(BUILD)/sp_De25NanoTop.v: $(SPINAL_SRC) Makefile
 	mkdir -p $(BUILD)
 	cd $(SPINAL) && sbt -batch "runMain mandelbrot.GenerateDe25Nano targetDir=$(abspath $(BUILD)) \
-	    coreMHz=$(CORE_MHZ) nCores=$(NCORES) fracWidth=$(FRAC_WIDTH)"
+	    coreMHz=$(CORE_MHZ) nCores=$(NCORES) fracWidth=$(FRAC_WIDTH) siLatency=$(SI_LATENCY)"
 
 # Terasic's LPDDR4 EMIF Platform Designer system (both banks; bank A is used) and reset-release IP.
 # Copied, not committed: Terasic's license only allows their use with Terasic boards.
@@ -41,8 +46,10 @@ $(BUILD)/EMIF_Qsys.qsys:
 	-cp $(LPDDR4_DEMO)/quartus.ini $(BUILD)/
 
 # Pixel clock 148.5 MHz (outclk_0) and core clock (outclk_1) from CLOCK0_50.
+# The old generated files must go, or quartus_ipgenerate keeps using them ("regeneration policy").
 $(BUILD)/sys_pll.ip: Makefile
 	mkdir -p $(BUILD)
+	rm -rf $(BUILD)/sys_pll
 	cd $(BUILD) && ip-deploy --family="Agilex 5" --part=$(PART) \
 	    --component-name=altera_iopll --output-name=sys_pll --output-directory=. \
 	    --component-parameter=gui_reference_clock_frequency=50.0 \

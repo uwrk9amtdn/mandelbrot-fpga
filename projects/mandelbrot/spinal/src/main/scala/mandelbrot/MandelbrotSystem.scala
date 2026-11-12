@@ -14,11 +14,11 @@ import spinal.lib.com.uart._
   * @param readerBurst AXI beats per read burst of the display path
   */
 case class SystemConfig(
-    wrapper: WrapperConfig = WrapperConfig(fracWidth = 16, nCores = 54, arbiterTreeSans = 5, burstLength = 32,
-      dataWidth = 256),
+    wrapper: WrapperConfig = WrapperConfig(fracWidth = 16, nCores = 60, arbiterTreeSans = 5, burstLength = 32,
+      dataWidth = 256), // 60 x 3 19x19 multipliers of the 188 DSP blocks
     timing: VideoTiming = VideoTiming.p1080,
     axi: Axi4Config = MemoryAxi.emifConfig,
-    coreHz: Double = 99e6,
+    coreHz: Double = 198e6, // 1188 MHz VCO / 6; the pixel clock is / 8
     readerBurst: Int = 16,
     uartBaud: Int = 115200,
     hdmiStartDelay: Double = 10e-3,

@@ -115,13 +115,15 @@ class Wrapper(val cfg: WrapperConfig) extends Component with SvClockNames {
   val coreIdx = Counter(nCores)
   val yOffset = RegInit(S(0, w bits))
 
-  val toCores = Stream(FrameCmd(w))
-  toCores.valid  := setup.valid
-  toCores.xStart := setup.topLeftX
-  toCores.yStart := setup.topLeftY - yOffset
-  toCores.xyStep := setup.xyStep
-  toCores.maxIt  := setup.maxIt
-  setup.ready    := toCores.ready && coreIdx.willOverflowIfInc // consumed once the last core has it
+  // The command carries its core index, so the dispatch can be pipelined.
+  val toCores = Stream(DispatchCmd(w, nCores))
+  toCores.valid      := setup.valid
+  toCores.idx        := coreIdx
+  toCores.cmd.xStart := setup.topLeftX
+  toCores.cmd.yStart := setup.topLeftY - yOffset
+  toCores.cmd.xyStep := setup.xyStep
+  toCores.cmd.maxIt  := setup.maxIt
+  setup.ready        := toCores.ready && coreIdx.willOverflowIfInc // consumed once the last core has it
 
   when(toCores.fire) {
     coreIdx.increment()
@@ -129,7 +131,13 @@ class Wrapper(val cfg: WrapperConfig) extends Component with SvClockNames {
   }
 
   val cores = for (i <- 0 until nCores) yield new CoreWrapper(core(i)).setName(s"core_$i")
-  for ((core, port) <- cores.zip(StreamDemux(toCores, coreIdx, nCores))) core.io.s << port
+  // The cores are spread over the whole chip: register both sides of the nCores-way demux
+  // (halfPipe: valid, payload and ready all registered, one transfer every 2 cycles, which is
+  // plenty for nCores commands per frame). Otherwise the ready mux of all cores and the enables
+  // of the setup register end up in one long, routing-dominated path.
+  val dispatch = toCores.halfPipe()
+  val ports    = StreamDemux(dispatch, dispatch.idx, nCores)
+  for ((core, port) <- cores.zip(ports)) core.io.s << port.map(_.cmd).halfPipe()
 
   // ------------------------------------------------------------------ result side
 
@@ -159,4 +167,10 @@ class Wrapper(val cfg: WrapperConfig) extends Component with SvClockNames {
   val data = Stream(Fragment(Bits(dataWidth bits)))
   StreamFragmentWidthAdapter(payload, data, LITTLE) // first word = low bits (like axis_adapter)
   io.mData << data.m2sPipe()
+}
+
+/** A FrameCmd for core `idx` (dispatch side of Wrapper). */
+case class DispatchCmd(w: Int, nCores: Int) extends Bundle {
+  val idx = UInt(log2Up(nCores) bits)
+  val cmd = FrameCmd(w)
 }

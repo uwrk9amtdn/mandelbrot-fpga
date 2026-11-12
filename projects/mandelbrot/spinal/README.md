@@ -22,7 +22,7 @@ level (`top.sv`, display path, memory reader/writer, HDMI setup) ported from the
 
 ```bash
 sbt test                                   # SpinalSim tests against the Scala reference model
-sbt "runMain mandelbrot.GenerateWrapper"   # default config (54 cores) -> gen/sp_Wrapper.v
+sbt "runMain mandelbrot.GenerateWrapper"   # default config (60 cores) -> gen/sp_Wrapper.v
 sbt "runMain mandelbrot.GenerateWrapper nCores=4 arbiterTreeSans=4 dataWidth=16 fracWidth=16"
 sbt "runMain mandelbrot.GenerateVerilog"   # CoreWrapper alone -> gen/sp_CoreWrapper.v
 cosim/run_wrapper.sh                       # SV wrapper vs Wrapper, per-address comparison
@@ -128,9 +128,9 @@ The two "if ready or not valid, load the register" output stages of `core_wrappe
 ## DE25-Nano
 
 ```
-                 core clock (99 MHz)                 memory clock (310 MHz)          pixel clock (148.5 MHz)
+                 core clock (198 MHz)                memory clock (310 MHz)          pixel clock (148.5 MHz)
  FPGA_UART ──► UartControl ─► registers ─► Wrapper ─► FIFOs ─► MemoryWriter ─┐
-                    │                    (54 cores)                          ├─ AXI4 ─► LPDDR4 EMIF (bank A)
+                    │                    (60 cores)                          ├─ AXI4 ─► LPDDR4 EMIF (bank A)
  HDMI_I2C  ◄── Adv7513Setup                       MemoryReader ◄─ vsync ─────┘
                                                        └─► FIFO (256 bit) ─► 16-bit counts ─► ColorConverter ─► DisplayDriver ─► HDMI_TX
 ```
@@ -139,11 +139,11 @@ What changed compared with the AC701 `top.sv`:
 
 | AC701 (Xilinx) | DE25-Nano (Altera) |
 |---|---|
-| 200 MHz LVDS clock, 7-series PLLs | `CLOCK0_50` → IOPLL `sys_pll` (148.5 MHz pixel, 99 MHz core) |
+| 200 MHz LVDS clock, 7-series PLLs | `CLOCK0_50` → IOPLL `sys_pll` (148.5 MHz pixel, 198 MHz core, both from a 1188 MHz VCO) |
 | MIG DDR3, 512-bit AXI + `axi_wc` down to 64 bit | Terasic `EMIF_Qsys` LPDDR4, 256-bit AXI at 310 MHz, used directly (`Wrapper.dataWidth = 256`) |
 | ADV7511 behind a PCA9548 I2C switch | ADV7513 directly on `HDMI_I2C_*`; re-initialised on hot plug (`HDMI_TX_INT`) |
 | VIO (`vio_0`, JTAG) | `UartControl` on `FPGA_UART_*` (USB-Blaster III serial port) + `../tools/mandelbrot_ctl.py` |
-| `NCORES = 108`, `ARBITER_TREE_SANS = 5`, `BURST_LENGTH = 32` | 54 cores by default (50 % of the ALMs, 164/376 DSP blocks); logic limits the count |
+| `NCORES = 108`, `ARBITER_TREE_SANS = 5`, `BURST_LENGTH = 32` | 60 cores: each needs three 19x19 multipliers, one per DSP block, and the device has 188 (the 376 in the product table counts 18x19 halves) |
 | `power_on_reset` | Agilex reset release IP (`ninit_done`) + PLL lock + `KEY[1]` |
 | frame pipeline reset during vsync | same |
 
@@ -158,7 +158,7 @@ build time (Terasic's license only allows using them with Terasic boards, so the
 cd ../quartus
 make DE25_DIR=~/Desktop/fpga/de25nano/DE25-Nano_revB_v.1.0.0_ResourcePackage   # (the default)
 make program
-make CORE_MHZ=148.5 NCORES=60                                                    # options
+make CORE_MHZ=185.625 NCORES=54 SI_LATENCY=8                                                    # options
 ```
 
 After configuration the design renders the full set once (`initialView` in `SystemConfig`).
@@ -210,6 +210,8 @@ and +/- zoom; needs pyserial).
   (against `ColorModel`), for two views and two palettes.
 - `cosim/run_parts.sh`: color_converter and display_driver cycle-exact against the SV.
 - The generated top level lints clean against Terasic's `EMIF_Qsys_bb.v` / `agilex_reset_release_bb.v` port lists.
-- Quartus Pro 26: compiles with timing met (core Fmax 199 MHz, memory 373 MHz, pixel 271 MHz),
-  50 % of the ALMs and 164 of 376 DSP blocks at 54 cores. **Not yet tried on the board.**
+- Quartus Pro 26, 60 cores at 198 MHz: timing met (core +1.1 ns, Fmax 254 MHz; memory 411, pixel 262),
+  57 % of the ALMs, 180 multipliers in 27x27 DSP mode. **Not yet tried on the board.**
+- The core dispatch in `Wrapper` is pipelined (`halfPipe` on both sides of the core demux): without it
+  the ready mux of all cores, spread over the chip, limited the core clock to 170 MHz.
 

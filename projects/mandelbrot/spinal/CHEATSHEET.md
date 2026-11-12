@@ -21,7 +21,7 @@ Run everything from `projects/mandelbrot/spinal/`.
 | Lint generated Verilog | `verilator --lint-only -Wall gen/sp_Wrapper.v` |
 | Compare with the SV: color_converter, display_driver | `cosim/run_parts.sh` (cycle by cycle) |
 | Whole board design in simulation | `sbt "testOnly mandelbrot.SystemSim"` (add `WAVE=1` for waveforms) |
-| DE25-Nano top level | `sbt "runMain mandelbrot.GenerateDe25Nano coreMHz=99 nCores=54"` → `gen/sp_De25NanoTop.v` |
+| DE25-Nano top level | `sbt "runMain mandelbrot.GenerateDe25Nano coreMHz=198 nCores=60"` → `gen/sp_De25NanoTop.v` |
 | DE25-Nano bitstream / program | `make -C ../quartus`, `make -C ../quartus program` (Quartus Pro) |
 | Talk to the board | `../tools/mandelbrot_ctl.py -p /dev/ttyUSB2 status` (or `interactive`) |
 

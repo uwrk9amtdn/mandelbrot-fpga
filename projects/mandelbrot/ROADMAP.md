@@ -352,6 +352,24 @@ boot, with Ethernet and ssh. What the board showed:
   78 % of 60 x 198 M iterations/s (each pixel also takes one extra pass for its bailout test).
 - The bitstream is loaded over JTAG, so a power cycle brings back the GHRD from the QSPI flash.
 
+**Where step 5 stands (2026-11-13): `mandelbrotd` works on the board; LZ4, the interrupt and the
+start at boot are missing.**
+
+- `hps/mandelbrotd.c` (cross-built, protocol in `hps/protocol.h`): one client at a time, each
+  TILE_REQ becomes one job, 8 result slots in a 32 MB huge page, `DC CIVAC` before reading a slot,
+  DONE polled every 100 us while jobs are in flight, pinned to CPU 3 (an A76). Run as root:
+  `sudo ./mandelbrotd [-v]`. It needs our bitstream loaded (`make program-hps`).
+- `pc/tests/test_board.py` (with `MANDELBROT_BOARD=192.168.10.10`): tiles bit-exact against an
+  integer model, errors, cancel, flow control, board status. All pass. `headless.py --host` renders
+  from the board.
+- Found on the board: a queued job that was aborted waited until the job ahead of it had issued all
+  its pixels, which at depth is forever. The issuer now takes the oldest queued context that is
+  not aborted (an age matrix instead of a FIFO), and an aborted queued job is done at once.
+- To do: LZ4 in `mandelbrotd` (raw tiles cap the link at about 14 M pixels/s); the interrupt through
+  UIO (a device-tree overlay) instead of polling; a systemd unit, once the bitstream is in the QSPI
+  flash so that it is there at power-on; a throughput measurement over the direct 1 GbE link (from
+  home, through Tailscale, the link gives about 6 MB/s).
+
 Steps 1-2 hold the biggest unknowns (the HPS bridges, `f2sdram`, the kernel), and the PC application
 needs no board until its milestone 4. So start both at the same time.
 

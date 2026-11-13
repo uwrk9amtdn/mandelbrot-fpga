@@ -45,7 +45,7 @@ def test_info(server):
     with Connection("127.0.0.1", server.port) as conn:
         info = conn.info
         assert (info.version, info.w, info.f, info.bailout_r2) == (1, 64, 54, 256)
-        assert info.features == p.FLAG_CARDIOID | p.FLAG_LZ4
+        assert info.features == p.FLAG_CARDIOID | p.FLAG_LZ4 | p.FEATURE_BOARD_STATUS
         assert info.arith_id == arith_id("sim-fast-float64", 64, 54, 256)
         assert info.arith_id != arith_id("sim-fast-float64", 64, 54, 4)
 
@@ -220,3 +220,17 @@ def test_connect_refused():
     with pytest.raises(OSError):
         Connection("127.0.0.1", port, timeout=1.0)
     assert ServerError  # raised by Connection when the server answers HELLO with an ERROR
+
+
+def test_board_status(server):
+    with Connection("127.0.0.1", server.port) as conn:
+        conn.request_status()
+        st = get(conn)
+        assert st == p.BoardStatus(40, 35, 3000, True)
+
+
+def test_feature_bit_is_not_a_request_flag(server):
+    with Connection("127.0.0.1", server.port) as conn:
+        request_id = conn.request(0, 0, 1 << 40, 10, 4, 4, flags=p.FEATURE_BOARD_STATUS)
+        err = get(conn)
+        assert isinstance(err, ErrorResult) and (err.request_id, err.code) == (request_id, p.Err.FLAGS)

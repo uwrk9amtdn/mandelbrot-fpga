@@ -135,6 +135,11 @@ def main():
             start = time.perf_counter()
             counts, _zz, stats = render(conn, view, width, height, a.max_it, flags)
             seconds = time.perf_counter() - start
+            board = None
+            if info.features & p.FEATURE_BOARD_STATUS:
+                conn.request_status()
+                while not isinstance(board := conn.results.get(timeout=5), p.BoardStatus):
+                    pass
     finally:
         if server:
             server.close()
@@ -147,6 +152,9 @@ def main():
     print(f"level {level}: {stats['tiles']} tiles (+{stats['synthesized']} outside the format) in "
           f"{seconds:.2f} s, {stats['iterations'] / 1e6:.1f} M iterations, "
           f"{stats['wire_bytes'] / 1e6:.2f} MB received")
+    if board is not None:
+        print(f"board: FPGA {board.fpga_temp} °C, board {board.board_temp} °C, fan {board.fan_rpm} RPM"
+              f"{'' if board.valid else ' (not valid)'}")
     print(f"wrote {a.output} ({width}x{height})")
 
 

@@ -81,8 +81,8 @@ case class DoneEntry() extends Bundle {
   * the AXI port to the bridge clock.
   *
   * Jobs: a push copies the job registers into a free context (there are cfg.nCtx; together they
-  * are the job queue). The issuer takes the contexts in push order and walks each tile, one pixel
-  * per cycle. Pixels go to any core with a free pipeline slot, so the next job's pixels fill the
+  * are the job queue). The issuer takes the oldest queued context and walks its tile, one pixel
+  * per cycle. A queued job that is aborted is done at once, without waiting for the issuer. Pixels go to any core with a free pipeline slot, so the next job's pixels fill the
   * cores while the slow pixels of the previous ones finish. A context is done, and reported in the
   * DONE FIFO, when every record it issued has been written and acknowledged on AXI.
   *
@@ -112,11 +112,15 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
     val valid                      = RegInit(False)
     val job                        = Reg(AccelJob(cfg))
     val aborted, error, issueDone  = Reg(Bool()) init (False)
+    val queued                     = Reg(Bool()) init (False) // pushed, not started by the issuer
     val issued, acked, skipped     = Reg(UInt(17 bits)) init (0)
     val iterations                 = Reg(UInt(64 bits)) init (0)
     val complete = RegNext(valid && issueDone && acked + skipped === issued) init (False)
   }
-  val validBits = ctxs.map(_.valid).asBits
+  val validBits  = ctxs.map(_.valid).asBits
+  val queuedBits = ctxs.map(_.queued).asBits
+  // Push order of the queued contexts: older(i)(j) is set when context j was pushed before i.
+  val older = Vec.fill(nCtx)(Reg(Bits(nCtx bits)) init (0))
   val busy      = validBits.orR
   io.busy      := busy
   val jobs      = Vec(ctxs.map(_.job))
@@ -164,13 +168,11 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
     val freeOh = OHMasking.first(~validBits)
     val go     = ctrlWrite && wdata(0) && (~validBits).orR // ignored when no context is free
 
-    // contexts in push order, for the issuer; never full (one entry per held context at most)
-    val order = StreamFifo(UInt(ctxBits bits), nCtx)
-    order.io.push.valid   := go && ok
-    order.io.push.payload := OHToUInt(freeOh)
-
     for ((c, i) <- ctxs.zipWithIndex) when(go && freeOh(i)) {
+      older(i)     := queuedBits // every queued context is older
+      for (r <- older) r(i) := False
       c.valid      := True
+      c.queued     := ok
       c.job.x0     := stX0
       c.job.y0     := stY0
       c.job.step   := stStep
@@ -189,15 +191,14 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
     }
   }
 
-  // ---------------------------------------------------------------------------------- abort
   val abortAll   = ctrlWrite && wdata(1)
   val abortWrite = f.isWriting(ABORT)
-  for (c <- ctxs) when(c.valid && (abortAll || (abortWrite && c.job.jobId === wdata(15 downto 0).asUInt))) {
-    c.aborted := True
-  }
 
   // ---------------------------------------------------------------------------------- issuer
   val issuer = new Area {
+    val candidates = queuedBits & ~ctxs.map(_.aborted).asBits
+    val oldest     = Bits(nCtx bits)
+    for (i <- 0 until nCtx) oldest(i) := candidates(i) && (older(i) & candidates) === 0
     val active           = RegInit(False)
     val cur              = Reg(UInt(ctxBits bits)) init (0)
     val x, y, x0, step   = Reg(SInt(w bits))
@@ -206,12 +207,12 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
     val idx              = Reg(UInt(idxBits bits))
     val curAborted       = Vec(ctxs.map(_.aborted))(cur)
 
-    val pop = push.order.io.pop
-    pop.ready := !active
-    when(pop.fire) {
-      val j = jobs(pop.payload)
+    val start    = !active && candidates.orR
+    val startIdx = OHToUInt(oldest)
+    when(start) {
+      val j = jobs(startIdx)
       active  := True
-      cur     := pop.payload
+      cur     := startIdx
       x       := j.x0
       x0      := j.x0
       y       := j.y0
@@ -246,9 +247,22 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
     when(finished)(active := False)
   }
   for ((c, i) <- ctxs.zipWithIndex) {
+    when(issuer.start && issuer.oldest(i))(c.queued := False)
     when(issuer.out.fire && issuer.cur === i)(c.issued := c.issued + 1)
     when(issuer.finished && issuer.cur === i)(c.issueDone := True)
   }
+
+  // ---------------------------------------------------------------------------------- abort
+  // A queued job is done at once; a running one stops issuing, and its pixels in the cores are
+  // dropped. A job the issuer starts in the same cycle counts as running.
+  for ((c, i) <- ctxs.zipWithIndex)
+    when(c.valid && (abortAll || (abortWrite && c.job.jobId === wdata(15 downto 0).asUInt))) {
+      c.aborted := True
+      when(c.queued && !(issuer.start && issuer.oldest(i))) {
+        c.queued    := False
+        c.issueDone := True
+      }
+    }
 
   // ---------------------------------------------------------------------------------- cores
   // Per-context settings reach the cores two cycles late; a new job's pixels take longer.

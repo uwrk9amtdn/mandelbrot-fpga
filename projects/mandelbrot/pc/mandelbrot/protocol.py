@@ -29,7 +29,8 @@ MAX_MAX_IT = 0xFFFFFFFD
 FLAG_PERIODICITY = 1 << 0
 FLAG_CARDIOID = 1 << 1
 FLAG_LZ4 = 1 << 2
-KNOWN_FLAGS = FLAG_PERIODICITY | FLAG_CARDIOID | FLAG_LZ4
+KNOWN_FLAGS = FLAG_PERIODICITY | FLAG_CARDIOID | FLAG_LZ4  # the request flags
+FEATURE_BOARD_STATUS = 1 << 3  # INFO only: the server answers STATUS_REQ
 RESULT_FLAGS = FLAG_PERIODICITY | FLAG_CARDIOID  # the ones that can change result bits
 
 ENCODING_RAW, ENCODING_LZ4 = 0, 1
@@ -45,6 +46,8 @@ class Msg(IntEnum):
     ERROR = 6
     PING = 7
     PONG = 8
+    STATUS_REQ = 9  # C->S, empty; only when INFO has FEATURE_BOARD_STATUS
+    STATUS = 10  # S->C: temperatures and fan speed
 
 
 class Err(IntEnum):
@@ -126,6 +129,7 @@ _TILE = struct.Struct("<IHHBBxxIQQQ")
 _CANCEL = struct.Struct("<Hxx")
 _ERROR = struct.Struct("<IHH")
 _COOKIE = struct.Struct("<I")
+_STATUS = struct.Struct("<hhHH")
 
 
 def _unpack(layout: struct.Struct, payload: bytes, exact: bool = True) -> tuple:
@@ -291,3 +295,23 @@ def encode_pong(cookie: int) -> bytes:
 
 def decode_cookie(payload: bytes) -> int:
     return _unpack(_COOKIE, payload)[0]
+
+
+def encode_status_req() -> bytes:
+    return pack(Msg.STATUS_REQ)
+
+
+@dataclass(frozen=True)
+class BoardStatus:
+    fpga_temp: int  # °C
+    board_temp: int  # °C
+    fan_rpm: int
+    valid: bool  # the readings come from the fan controller
+
+    def encode(self) -> bytes:
+        return pack(Msg.STATUS, _STATUS.pack(self.fpga_temp, self.board_temp, self.fan_rpm, int(self.valid)))
+
+    @staticmethod
+    def decode(payload: bytes) -> "BoardStatus":
+        fpga, board, rpm, flags = _unpack(_STATUS, payload)
+        return BoardStatus(fpga, board, rpm, bool(flags & 1))

@@ -57,7 +57,7 @@ every request is self-contained.
 | 6 | ERROR | S→C | u32 request id (0 if none); u16 code; u16 text length; UTF-8 text |
 | 7 | PING | either | u32 cookie |
 | 8 | PONG | either | the same u32 cookie |
-| 9 | STATUS_REQ | C→S | empty. Only sent when INFO has feature bit 3. |
+| 9 | STATUS_REQ | C→S | empty. Only sent when INFO has feature bit 3 (a feature bit only, never a request flag). |
 | 10 | STATUS | S→C | i16 FPGA temperature in °C; i16 board temperature in °C; u16 fan speed in RPM; u16 flags (bit 0: the readings are valid) |
 
 - **Pixel coordinates:** pixel (i, j) of a tile, with i the column and j the row, is

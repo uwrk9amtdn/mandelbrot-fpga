@@ -115,3 +115,11 @@ def test_cancel_error_ping():
     assert p.decode_cookie(roundtrip(p.encode_pong(77))[1]) == 77
     with pytest.raises(p.ProtocolError):
         p.decode_cancel(p.encode_cancel([1, 2])[16:-1])
+
+
+def test_board_status_roundtrip():
+    st = p.BoardStatus(-5, 41, 3600, True)
+    msg_type, payload = roundtrip(st.encode())
+    assert msg_type == p.Msg.STATUS and p.BoardStatus.decode(payload) == st
+    msg_type, payload = roundtrip(p.encode_status_req())
+    assert (msg_type, payload) == (p.Msg.STATUS_REQ, b"")

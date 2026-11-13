@@ -20,6 +20,7 @@ import numpy as np
 from . import protocol as p
 
 RESULT_FORMAT = 1
+SIM_STATUS = p.BoardStatus(fpga_temp=40, board_temp=35, fan_rpm=3000, valid=True)  # fixed values
 
 
 def arith_id(model: str, w: int, f: int, bailout_r2: int) -> int:
@@ -79,7 +80,7 @@ class SimServer:
         self.info = p.Info(
             version=p.VERSION, w=w, f=f, n_cores=n_cores, clock_khz=clock_khz,
             max_tile_width=256, max_tile_height=256, max_in_flight=max_in_flight,
-            features=p.FLAG_CARDIOID | p.FLAG_LZ4, max_max_it=p.MAX_MAX_IT,
+            features=p.FLAG_CARDIOID | p.FLAG_LZ4 | p.FEATURE_BOARD_STATUS, max_max_it=p.MAX_MAX_IT,
             bailout_r2=bailout_r2, arith_id=arith_id("sim-fast-float64", w, f, bailout_r2))
         self.tile_delay = tile_delay
         self._pool = ThreadPoolExecutor(workers, thread_name_prefix="sim-tile")
@@ -189,6 +190,8 @@ class _Session:
                 self.send(p.encode_pong(p.decode_cookie(payload)))
             elif msg_type == p.Msg.PONG:
                 pass
+            elif msg_type == p.Msg.STATUS_REQ:
+                self.send(SIM_STATUS.encode())
             else:
                 raise p.ProtocolError(f"unexpected message type {msg_type}")
 
@@ -220,7 +223,7 @@ class _Session:
             error = (p.Err.TILE_SIZE, f"tile size {req.width}x{req.height}")
         elif not 1 <= req.max_it <= info.max_max_it:
             error = (p.Err.MAX_IT, f"max_it {req.max_it}")
-        elif req.flags & ~info.features:
+        elif req.flags & ~(info.features & p.KNOWN_FLAGS):
             error = (p.Err.FLAGS, f"flags {req.flags:#x} not supported (features {info.features:#x})")
         elif not req.fits(info.w):
             error = (p.Err.COORDINATE, f"tile doesn't fit {info.w} bits")

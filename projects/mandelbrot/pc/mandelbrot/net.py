@@ -71,7 +71,7 @@ class Connection:
             raise
         self.sock.settimeout(None)
 
-        self.results: queue.Queue[TileResult | ErrorResult | Closed] = queue.Queue()
+        self.results: queue.Queue[TileResult | ErrorResult | p.BoardStatus | Closed] = queue.Queue()
         self._outbox: queue.Queue[bytes | None] = queue.Queue()
         self._lock = threading.Lock()
         self._in_flight: set[int] = set()
@@ -101,6 +101,12 @@ class Connection:
         req = p.TileReq(request_id, width, height, max_it, flags, x0, y0, step)
         self._outbox.put(req.encode(self.info.w))
         return request_id
+
+    def request_status(self):
+        """Ask for the board status; it arrives on `results` as a BoardStatus."""
+        if not self.info.features & p.FEATURE_BOARD_STATUS:
+            raise ServerError("the server has no board status")
+        self._outbox.put(p.encode_status_req())
 
     def cancel(self, request_ids=()):
         """Cancel these requests, or all of them if none is given. Each still gets its result."""
@@ -146,6 +152,8 @@ class Connection:
                     error = ErrorResult(*p.decode_error(payload))
                     self._done(error.request_id)
                     self.results.put(error)
+                elif msg_type == p.Msg.STATUS:
+                    self.results.put(p.BoardStatus.decode(payload))
                 elif msg_type == p.Msg.PING:
                     self._outbox.put(p.encode_pong(p.decode_cookie(payload)))
                 # PONG and types of a later protocol version are ignored

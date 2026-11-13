@@ -4,12 +4,14 @@ CC = aarch64-linux-gnu-gcc
 CFLAGS = -O2 -Wall -Wextra -static
 BOARD ?= terasic@192.168.10.10
 
-PROGS = memtool hugebuf_test
+PROGS = memtool hugebuf_test mandelbrotd
 
 all: $(PROGS)
 
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $<
+
+mandelbrotd: mandelbrotd.c protocol.h
 
 install: $(PROGS)
 	scp $(PROGS) accel_test.py $(BOARD):

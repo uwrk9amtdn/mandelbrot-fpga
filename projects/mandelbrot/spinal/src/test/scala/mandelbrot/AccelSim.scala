@@ -140,6 +140,19 @@ class AccelSim extends AnyFunSuite {
       write(CONTROL, 0) // IRQ off
       assert(!dut.io.irq.toBoolean)
 
+      // abort a queued job while the job ahead of it keeps running: it is done at once
+      push(Job(51, 0, fix(-0.3), fix(0.2), fix(0.01), 16, 16, 1000000))
+      push(Job(52, 1, fix(-0.3), fix(0.2), fix(0.01), 16, 16, 1000000))
+      push(Job(53, 2, fix(-1.9), fix(0.1), fix(0.01), 4, 4, 30)) // short, queued behind both
+      bridgeCd.waitSampling(200)
+      write(ABORT, 52)
+      val q1 = waitDone()
+      assert(q1._1 == 52 && q1._2 == 1)
+      write(ABORT, 51)
+      val rest = Seq(waitDone(), waitDone())
+      assert(rest.map(r => r._1 -> r._2).toSet == Set(51 -> 1, 53 -> 0))
+      check(Job(53, 2, fix(-1.9), fix(0.1), fix(0.01), 4, 4, 30), rest.find(_._1 == 53).get._3)
+
       // the result area can't change while jobs are held
       push(Job(41, 0, fix(-0.3), fix(0.2), fix(0.01), 4, 4, 1000000))
       write(RESULT_BASE, 0)

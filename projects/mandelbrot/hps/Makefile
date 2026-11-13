@@ -2,15 +2,19 @@
 # glibc version is not known. Arch: pacman -S aarch64-linux-gnu-gcc
 CC = aarch64-linux-gnu-gcc
 CFLAGS = -O2 -Wall -Wextra -static
-BOARD ?= terasic@de25nano
+BOARD ?= terasic@192.168.10.10
 
-memtool: memtool.c
+PROGS = memtool hugebuf_test
+
+all: $(PROGS)
+
+%: %.c
 	$(CC) $(CFLAGS) -o $@ $<
 
-install: memtool
-	scp memtool $(BOARD):
+install: $(PROGS)
+	scp $(PROGS) accel_test.py $(BOARD):
 
 clean:
-	rm -f memtool
+	rm -f $(PROGS)
 
-.PHONY: install clean
+.PHONY: all install clean

@@ -37,7 +37,14 @@ each. Keep this list current when the board's system is changed.
 - **Why:** 192.168.10.10 had been set by hand with `ip addr` and would have been lost at the reboot.
 - **Undo:** `sudo nmcli con delete board-static`.
 
+### Temporary (until reboot), undone
+
+- Huge pages reserved through sysfs for `hugebuf_test` (one 32 MB page, two 2 MB pages), released
+  again afterwards (`nr_hugepages` back to 0).
+- The FPGA runs our bitstream (`make program-hps`, over JTAG): a power cycle brings back the GHRD
+  from the QSPI flash.
+
 ## In the home folder (for completeness)
 
 - `~/.ssh/authorized_keys`: the PC's `id_rsa.pub`, for logins without a password.
-- `~/memtool`: the test tool from this directory.
+- `~/memtool`, `~/hugebuf_test`, `~/accel_test.py`: the test tools from this directory.

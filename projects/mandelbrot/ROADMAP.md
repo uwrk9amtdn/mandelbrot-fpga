@@ -136,16 +136,23 @@ Status: phase 1 in progress (PC application milestone 1 is done, see
 - **Hardware access:** UIO for the register block and the interrupt (bring-up uses `/dev/mem`).
 - **Result buffer: huge pages** (decided 2026-11-13). The uncached `/dev/mem` mapping of reserved
   memory reads at 23-148 MB/s, too close to the 110 MB/s link, so the buffer is ordinary cached RAM:
-  - `mandelbrotd` maps 4 MB of hugetlbfs pages (2 MB each, physically contiguous), locks them, and
-    finds their physical addresses in `/proc/self/pagemap`. Each 2 MB page holds 4 result slots, so
-    the slots need not be contiguous across pages: RESULT_BASE becomes per page, or the job's slot
-    address is computed by `mandelbrotd` (to settle in the experiment below).
-  - `f2sdram` is not cache-coherent: before reading a tile, `mandelbrotd` invalidates its lines
-    (`DC CIVAC`, allowed in userspace on arm64). The alternative is the GHRD's `fpga2hps` bridge,
-    which is coherent through the CCU and needs no invalidate, at the cost of rewiring the writer.
-  - Needs a short experiment first: huge pages reserved at boot (`hugepages=` or sysfs), the
-    pagemap lookup as root, a tile written by the FPGA and read back after the invalidate, and the
-    copy rate.
+  - `mandelbrotd` maps one 32 MB huge page (anonymous, `MAP_HUGETLB` with the 32 MB size; the
+    kernel offers 64 KB, 2 MB, 32 MB and 1 GB pages), locks it, and finds its physical address in
+    `/proc/self/pagemap` (as root). The first 4 MB are the 8 result slots, physically contiguous,
+    so the single RESULT_BASE stays.
+  - The page is reserved through sysfs before `mandelbrotd` starts
+    (`echo 1 > /sys/kernel/mm/hugepages/hugepages-32768kB/nr_hugepages`), early in boot so that
+    32 MB of contiguous memory are still free. Fallback if that fails: 2 MB pages, which are not
+    contiguous with each other (seen in the test), so only 4 slots fit under one RESULT_BASE, or
+    the accelerator takes a slot address per job instead of an index.
+  - `f2sdram` is not cache-coherent: after DONE and before reading a tile, `mandelbrotd` cleans and
+    invalidates its lines (`DC CIVAC` per 64-byte line, then `DSB`; allowed in userspace on arm64).
+    Nothing writes the buffer from the CPU, so the clean never overwrites FPGA data. The coherent
+    `fpga2hps` bridge would avoid the invalidate, but it costs only about 80 us per tile.
+  - Tested on the board with `hps/hugebuf_test.c` (2026-11-13): tiles in slot 0 and slot 7 match the
+    same tile written to reserved memory, for 32 MB and 2 MB pages. Reading a 512 KB tile, with the
+    invalidate: 1.7 GB/s on an A55 core, 2.1 GB/s on an A76 (the uncached `/dev/mem` mapping: 23 to
+    148 MB/s). So the copy is 15-20 times faster than the link.
   - Other options, kept in case huge pages fail:
     - `u-dma-buf`, the usual open-source module for exactly this: a cached buffer with explicit
       sync calls. It is not in this kernel (`CONFIG_UDMABUF` is off, and that is a different thing
@@ -400,9 +407,8 @@ per width, and no tuning for one more core.
   for the chosen guard bits.
 - 260-bit adders at 198 MHz: pipeline depth vs. ALM use, to be checked at W = 64 first.
 - The uncached `/dev/mem` mapping of the result buffer is too slow (23-148 MB/s against a 110 MB/s
-  link), hence huge pages (see `mandelbrotd`, "Result buffer"). Risk: the cache invalidate from
-  userspace, or the pagemap lookup, may not behave as expected on this kernel; the experiment
-  comes first.
+  link), hence huge pages (see `mandelbrotd`, "Result buffer"); tested, 1.7-2.1 GB/s. Remaining
+  risk: a 32 MB page may not be available when memory is fragmented, so reserve it early in boot.
 - Integer bits in phase 1: I = 5 with bailout 4 can't overflow before the bailout is seen (|c| < 2
   gives |z_n| < 6; any other c escapes at n = 1). |z|² at escape reaches 512 (for |c| near 16), so
   it is reported with 22 fraction bits in 32.

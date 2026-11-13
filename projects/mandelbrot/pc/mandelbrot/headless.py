@@ -14,15 +14,8 @@ import numpy as np
 
 from . import protocol as p
 from .net import Closed, Connection, ErrorResult
+from .tiles import synth_tile
 from .view import TILE, View, max_level, min_level, tile_origin, visible_tiles
-
-
-def synth_tile(f_bits: int, x0: int, y0: int, step: int) -> tuple[np.ndarray, np.ndarray]:
-    """A tile outside the W-bit format: every pixel has |c| >= R, so it escapes at n = 1 with z = c."""
-    xs = np.array([float(x0 + i * step) for i in range(TILE)]) * 2.0 ** -f_bits
-    ys = np.array([float(y0 - j * step) for j in range(TILE)]) * 2.0 ** -f_bits
-    zz = (xs[None, :] ** 2 + ys[:, None] ** 2).astype(np.float32)
-    return np.ones((TILE, TILE), np.uint32), zz
 
 
 def render(conn: Connection, view: View, width: int, height: int, max_it: int, flags: int = 0,

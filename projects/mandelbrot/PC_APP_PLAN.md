@@ -1,7 +1,8 @@
 # Plan: communication protocol and PC application
 
-Part of [ROADMAP.md](ROADMAP.md), phase 1. Status: milestone 1 is done (`pc/`: `protocol.py`,
-`sim_server.py` in fast mode, `net.py`, `view.py`, `headless.py`, tests); the viewer is next.
+Part of [ROADMAP.md](ROADMAP.md), phase 1. Status: milestones 1 and 2 are done, and the board part
+of milestone 4 (the client against `mandelbrotd`, `tests/test_board.py`). Colouring (milestone 3)
+is next.
 
 The PC application (the client) tiles the screen, sends tile requests to the board, receives
 iteration counts and does all the colouring. On the board, the HPS server `mandelbrotd` passes each
@@ -350,8 +351,18 @@ level above and below around the cursor.
 1. **Protocol and simulated server (done):** `protocol.py`, `sim_server.py` (fast mode), and a
    headless client test that renders a full view and compares it with numpy. `headless.py` also
    renders a view to a PNG from the shell, which is the first thing to run against the board.
-2. **Viewer:** window, textures, escape-time colouring, the global lattice and tile grid, previews,
-   cancelling and flow control, zoom and pan with the mouse.
+2. **Viewer (done 2026-11-13):** window, textures, escape-time colouring, the global lattice and
+   tile grid, previews, cancelling and flow control, zoom and pan with the mouse.
+   - `tiles.py` (no GL: visible tiles, previews, cancelling, in-memory LRU, the draw list),
+     `gl_view.py` (texture arrays, instanced quads, shader), `colouring.py` (palette presets),
+     `app.py` (hello_imgui window, panels, input). Run: `uv run python -m mandelbrot.app --sim` or
+     `--host <board>`; `uv sync --extra gui` first.
+   - Tests: `test_tiles.py` against the simulated server, `test_gl_view.py` renders off screen
+     (Mesa llvmpipe through EGL) and compares every pixel. The app itself was driven under Xvfb
+     with xdotool (wheel, drag, box zoom, Backspace, H) and `--screenshot`.
+   - Differences from the plan: Esc stops requesting until the next move (otherwise the visible
+     tiles would be requested again at once); the |z|² array is uploaded but not used until the
+     smooth colourings; the panels are one window (Connection, View, Colouring, Statistics, Help).
 3. **Colouring:** smooth, log-smooth, histogram, HSV/LCH, palettes and the gradient editor, panels.
 4. **Board:** connect to `mandelbrotd` as soon as the FPGA and HPS side of phase 1 is ready; compare
    with the simulated server; measure throughput. Nothing below is needed for this. STATUS_REQ and

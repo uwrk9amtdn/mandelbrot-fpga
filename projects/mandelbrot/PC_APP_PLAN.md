@@ -50,13 +50,15 @@ every request is self-contained.
 | Type | Name | Direction | Payload |
 |---|---|---|---|
 | 1 | HELLO | C→S | u16 protocol version (1) |
-| 2 | INFO | S→C | u16 protocol version; u16 W; u16 F; u16 nCores; u32 core clock in kHz; u16 max tile width (256); u16 max tile height (256); u16 max requests in flight; u16 feature bits (bit 0 periodicity check, 1 cardioid test, 2 LZ4); u32 max max_it; u32 bailout R²; u32 **arithmetic id** |
+| 2 | INFO | S→C | u16 protocol version; u16 W; u16 F; u16 nCores; u32 core clock in kHz; u16 max tile width (256); u16 max tile height (256); u16 max requests in flight; u16 feature bits (bit 0 periodicity check, 1 cardioid test, 2 LZ4, 3 board status); u32 max max_it; u32 bailout R²; u32 **arithmetic id** |
 | 3 | TILE_REQ | C→S | u32 request id (unique for the connection, never reused, not 0); u16 width; u16 height; u32 max_it; u32 flags (bit 0 periodicity, 1 cardioid, 2 LZ4 wanted); x0, y0 (the **top-left pixel**), step: N words each |
 | 4 | TILE | S→C | u32 request id; u16 width; u16 height; u8 encoding (0 raw, 1 LZ4); u8 status (0 complete, 1 aborted by a cancel); 2 bytes padding; u32 raw size; u64 iterations of this tile; u64 total iterations and u64 total cycles (the FPGA's free-running counters, read when the tile finished); then the data |
 | 5 | CANCEL | C→S | u16 count; 2 bytes padding; count × u32 request id. Count 0 cancels every outstanding request. |
 | 6 | ERROR | S→C | u32 request id (0 if none); u16 code; u16 text length; UTF-8 text |
 | 7 | PING | either | u32 cookie |
 | 8 | PONG | either | the same u32 cookie |
+| 9 | STATUS_REQ | C→S | empty. Only sent when INFO has feature bit 3. |
+| 10 | STATUS | S→C | i16 FPGA temperature in °C; i16 board temperature in °C; u16 fan speed in RPM; u16 flags (bit 0: the readings are valid) |
 
 - **Pixel coordinates:** pixel (i, j) of a tile, with i the column and j the row, is
   c = (x0 + i·step, y0 − j·step). The rows go down the screen, so imaginary values decrease.
@@ -92,6 +94,11 @@ every request is self-contained.
   simulated fast/exact mode). The FPGA has it as a constant register, computed by the generator from
   the configuration. The cache uses it, so tiles from one build or from the simulated server are
   never shown as results of another.
+- **Board status:** the client polls with STATUS_REQ, about once a second while the statistics panel
+  is open. `mandelbrotd` answers from the BOARD_TEMP and FAN_RPM registers (see
+  [ROADMAP.md](ROADMAP.md)). It is a poll and not a push, so an idle connection stays silent and
+  STATUS is not counted in the flow control. The simulated server sets feature bit 3 and answers
+  with fixed values, so the client code is tested without a board.
 - **Errors,** by code: 1 protocol version not supported (in reply to HELLO; the server then closes),
   2 bad tile size, 3 bad max_it, 4 unknown flag or a feature the server lacks, 5 more requests in
   flight than INFO allows, 6 request id 0 or already in flight, 7 the tile doesn't fit W bits,
@@ -331,7 +338,7 @@ level above and below around the cursor.
 - **Colouring panel:** algorithm, palette and its parameters.
 - **Statistics:** tiles/s, MB/s, G iterations/s, frame render time, the share of unresolved pixels on
   screen, and FPGA utilisation: Δ total iterations / (Δ total cycles · nCores), from the totals of
-  two TILEs.
+  two TILEs. With feature bit 3: FPGA and board temperature and fan speed, from STATUS.
 - **Bookmarks:** named views with their colouring, in a JSON file.
 - **Export:**
   - PNG of the screen
@@ -347,7 +354,9 @@ level above and below around the cursor.
    cancelling and flow control, zoom and pan with the mouse.
 3. **Colouring:** smooth, log-smooth, histogram, HSV/LCH, palettes and the gradient editor, panels.
 4. **Board:** connect to `mandelbrotd` as soon as the FPGA and HPS side of phase 1 is ready; compare
-   with the simulated server; measure throughput. Nothing below is needed for this.
+   with the simulated server; measure throughput. Nothing below is needed for this. STATUS_REQ and
+   STATUS go into `protocol.py`, the simulated server and `headless.py` (which prints them) here;
+   the panel that shows them is part of milestone 6.
 5. **Cache:** disk cache with eviction, reuse at another max_it, the cache panel, offline mode.
    Tests: key canonicalisation, a damaged file counts as a miss, eviction at the size limit, a
    second render of a view is 100 % hits, a tile without unresolved pixels answers a higher max_it.

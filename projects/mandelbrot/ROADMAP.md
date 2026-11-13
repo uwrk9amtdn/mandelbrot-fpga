@@ -76,6 +76,8 @@ Status: phase 1 in progress (PC application milestone 1 is done, see
   | 0x080-0x084 | TOTAL_ITERATIONS | RO | 64 bits, free running, all jobs. Reading the low word latches all three totals, so they belong to the same cycle. |
   | 0x088-0x08C | TOTAL_CYCLES | RO | 64 bits, free-running count of core clock cycles |
   | 0x090-0x094 | TOTAL_PIXELS | RO | 64 bits, free-running count of finished pixels |
+  | 0x098 | BOARD_TEMP | RO | bits 15:0 FPGA temperature, bits 31:16 board temperature, both signed, in °C (from the fan controller) |
+  | 0x09C | FAN_RPM | RO | bits 15:0 fan speed in RPM, bit 31 I2C ready (the readings are valid) |
 
   The registers X0..FLAGS, JOB_ID and RESULT_SLOT fill a **job queue**, not a single job. The cores
   can compute a 256x256 tile in about 0.5-1 ms at shallow zoom. With one job at a time they would
@@ -241,6 +243,13 @@ The goal is the whole data path working end to end, with no new arithmetic yet.
    reserved HPS memory through `f2sdram`, read it back from Linux, and measure the read speed.
 3. New Spinal top `De25NanoHpsTop` with `qsys_top` as a BlackBox, and `MandelbrotAccel` with the
    register map above, around the existing 19-bit cores (60 cores).
+   - **Fan control:** the AMC6821 fan controller (I2C address 0x5C on the HDMI I2C pins, FPGA side
+     only, so Linux can't reach it) runs the fan at full speed until the FPGA configures it.
+     Instantiate Terasic's `BOARD_MANAGEMENT` IP (`Demonstration/FPGA/Board_Info_RTL/board_management_ip`)
+     as a BlackBox with `Auto_Fan_Speed` = 1: 3000 RPM at 35 °C rising to 10000 RPM at 90 °C. Its
+     files are copied at build time, like the other Terasic files. Its temperature and RPM outputs
+     go to BOARD_TEMP and FAN_RPM (they change slowly, so a plain two-flop crossing is enough).
+     Not simulated: the testbench of step 7 ties these inputs off.
 4. Rework `Core` from batches (LOAD, CALC, UNLOAD) to per-slot refill: a slot that finishes hands
    over its result (u32 count, |z|², pixel index, job id) and takes the next pixel from the pixel
    issuer. Add 2 integer bits (see the risks).
@@ -250,18 +259,37 @@ The goal is the whole data path working end to end, with no new arithmetic yet.
 7. A simulation testbench: `MandelbrotAccel` with `AxiMemorySim` as HPS memory and an AXI-Lite driver,
    compared against a Scala model of the whole image.
 
-**Where step 1 stands (2026-11-12): not started.** No Quartus build is needed: the package has a
-prebuilt GHRD (`Demonstration/SoC_FPGA/GHRD/output_files/golden_top_hps.sof` and `.jic`). Boot it
-with the SD image (`de25_nano_sdcard_console_v1.1.zip`), get Ethernet and ssh working, then collect
-the output of these on the board. It decides whether UIO and reserved memory work without a kernel
-rebuild, and what the `f2sdram` test of step 2 looks like:
+**Step 1 is done (2026-11-13).** The prebuilt GHRD and the SD image (`de25_nano_sdcard_console_v1.1.zip`)
+boot, with Ethernet and ssh. What the board showed:
 
-```
-uname -a; cat /proc/cmdline; free -m
-ls /sys/class/uio /dev/mem
-zcat /proc/config.gz | grep -E "CONFIG_UIO|DEVMEM|CMA"
-which devmem devmem2 gcc
-```
+- Kernel 6.12.11, 934 MB of RAM, command line `console=ttyS0,115200 root=/dev/mmcblk0p2 rw rootwait`.
+- `/dev/mem` works for us without a rebuild: `CONFIG_DEVMEM=y`, and `STRICT_DEVMEM=y` without
+  `IO_STRICT_DEVMEM` only blocks the kernel's own RAM, not the bridges or RAM removed with `mem=`.
+- UIO is there as modules (`CONFIG_UIO=m`, `UIO_PDRV_GENIRQ=m`) but has no devices. It needs a
+  device-tree node for our register block, so it waits for step 5.
+- CMA is 32 MB (enough for the 4 MB of result slots if `u-dma-buf` is needed later).
+- No `devmem`, `devmem2` or `gcc` on the board: tools are cross-built on the PC (`hps/`).
+
+**Step 2 tools** are in `hps/`: `memtool` (peek, poke, pattern fill/check, read-speed benchmark over
+`/dev/mem`) and `f2sdram_test.tcl` (writes the same pattern through the GHRD's JTAG master on
+`f2sdram`). GHRD addresses, from `qsys_top.qsys`: `lwhps2fpga` holds sysid at +0x1_0000 (id
+0xACD5CAFE), button PIO +0x1_0060, DIP switch PIO +0x1_0070, LED PIO +0x1_0080.
+
+**Step 2 is done (2026-11-13).** Results, on the prebuilt GHRD:
+
+- `lwhps2fpga` works from Linux at 0x2000_0000: sysid reads 0xACD5CAFE, the DIP switches read back.
+- RAM is 0x8000_0000-0xBFFF_FFFF. 16 MB at 0xBF00_0000 are now reserved for us by a `no-map` node in
+  the device tree (the boot script is a checksummed FIT image, so `mem=` was not used). Changes to
+  the board's system are listed in [hps/BOARD_CHANGES.md](hps/BOARD_CHANGES.md).
+- `f2sdram` works, and its addresses are HPS physical addresses: 64 KB written over JTAG at
+  0xBF10_0000 read back from Linux without an error.
+- **Reading the buffer through `/dev/mem` is too slow.** The mapping is device memory (uncached).
+  Copying 4 MB out of it: 23 MB/s with 64-bit loads and 90 MB/s with 128-bit loads on an A55 core,
+  73 and 148 MB/s on an A76 core. The link carries about 110 MB/s, and `mandelbrotd` has more to do
+  per byte than a copy. So `mandelbrotd` needs a cached mapping of the result buffer; see the risks.
+- For later: `/sys/kernel/config/device-tree` exists (overlays can add the UIO node), hugetlbfs is
+  enabled, and `u-dma-buf` is not in the kernel (`CONFIG_UDMABUF` is off; it would be an
+  out-of-tree module).
 
 Steps 1-2 hold the biggest unknowns (the HPS bridges, `f2sdram`, the kernel), and the PC application
 needs no board until its milestone 4. So start both at the same time.
@@ -313,16 +341,19 @@ per width, and no tuning for one more core.
 - The bridge clock is 100 MHz and the cores run at 198 MHz, so the result writer and the register
   block need a clock crossing. Whether `f2sdram` can be clocked at the core clock instead is not
   checked.
-- Whether the SD image's kernel and device tree allow UIO and reserved memory without a rebuild.
-  Fallback: `mem=` and `/dev/mem`.
 - GHRD made with Quartus 25.1; we use Quartus 26, so the IP may need upgrading (`qsys-generate --upgrade`).
 - Truncation error accumulated over many iterations: verify the error stays below the pixel step
   for the chosen guard bits.
 - 260-bit adders at 198 MHz: pipeline depth vs. ALM use, to be checked at W = 64 first.
-- `f2sdram` is not cache-coherent, and reading the result buffer through an uncached mapping may be
-  slower than the link (110 MB/s), which would make the HPS copy the bottleneck. Measure it in
-  phase 1 step 2. If it is too slow, use `u-dma-buf` from the start (a cached mapping, with an
-  explicit sync before each read), or the coherent `fpga2hps` bridge.
+- `f2sdram` is not cache-coherent, and the uncached `/dev/mem` mapping of the result buffer is too
+  slow (measured in phase 1 step 2: 23-148 MB/s against a 110 MB/s link). `mandelbrotd` needs a
+  cached mapping. To decide before step 5, in this order of preference:
+  1. hugetlbfs pages as the buffer (cached, physical address from `/proc/self/pagemap`, no kernel
+     module), written through the coherent `fpga2hps` bridge, or through `f2sdram` with a cache
+     invalidate (`DC CIVAC`, allowed in userspace on arm64) before each read;
+  2. `u-dma-buf` as an out-of-tree module, if the kernel build tree on the board is usable;
+  3. keep `/dev/mem`, pin `mandelbrotd` to an A76 core and read with 128-bit loads (148 MB/s, little
+     margin).
 - Integer bits of the escape test: z itself fits I = 10, but the z that escapes reaches about 258,
   so its squares reach about 66 000 (17 integer bits), and (x+y)² twice that. The truncated squarer
   has to keep those top bits for the escape test and for the |z|² output. Put it in the reference

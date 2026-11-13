@@ -55,12 +55,12 @@ Status: phase 1 in progress (PC application milestone 1 is done, see
   |---|---|---|---|
   | 0x000 | ID | RO | 'MAND' |
   | 0x004 | VERSION | RO | |
-  | 0x008 | CAPS | RO | nCores, W (total bits), I (integer bits), feature bits (periodicity, cardioid), job queue depth |
+  | 0x008 | CAPS | RO | bits 7:0 nCores, 15:8 W (total bits), 20:16 I (integer bits), 23:21 feature bits (periodicity, cardioid; none yet), 31:24 job queue depth |
   | 0x00C | ARITH_ID | RO | hash of the configuration that changes result bits (W, I, guard bits, bailout, format); used as part of the PC's tile cache key |
-  | 0x010 | CONTROL | WO | bit 0 push the job registers into the job queue (ignored when the queue is full), bit 1 abort all jobs, bit 8 IRQ enable |
+  | 0x010 | CONTROL | WO | bit 0 push the job registers into the job queue (ignored when the queue is full), bit 1 abort all jobs, bit 8 IRQ enable (every write sets or clears it) |
   | 0x014 | STATUS | RO | bit 0 busy (a job is queued or running), bit 1 DONE FIFO not empty (this is the interrupt). Errors are reported per job, in DONE. |
   | 0x018 | ABORT | WO | id of one queued or running job to abort (a cancel from the PC names single requests). Its pixels still in the pipelines are dropped, and the job is reported in the DONE FIFO as aborted. The same goes for every job of an "abort all". |
-  | 0x01C | QUEUE | RO | free entries in the job queue, and the number of entries in the DONE FIFO |
+  | 0x01C | QUEUE | RO | bits 15:0 free entries in the job queue, 31:16 entries in the DONE FIFO |
   | 0x020-0x02C | X0[4] | RW | real part of the tile's top-left pixel, W-bit two's complement, low word first. Given directly by the PC: the FPGA no longer computes the top left from a centre (today's `Wrapper` setup stage goes away). |
   | 0x030-0x03C | Y0[4] | RW | imaginary part of the top-left pixel |
   | 0x040-0x04C | STEP[4] | RW | distance between pixels |
@@ -78,11 +78,17 @@ Status: phase 1 in progress (PC application milestone 1 is done, see
   | 0x090-0x094 | TOTAL_PIXELS | RO | 64 bits, free-running count of finished pixels |
   | 0x098 | BOARD_TEMP | RO | bits 15:0 FPGA temperature, bits 31:16 board temperature, both signed, in °C (from the fan controller) |
   | 0x09C | FAN_RPM | RO | bits 15:0 fan speed in RPM, bit 31 I2C ready (the readings are valid) |
+  | 0xF00-0xF3C | TEST_* | | temporary: reads one 32-byte beat over `f2sdram` (bring-up only, see `MandelbrotAccel`) |
+
+  Registers that are not plain storage (CONTROL, ABORT, DONE, RESULT_BASE, RESULT_SLOTS) take
+  whole 32-bit writes; byte enables are ignored there. A job whose size is not 1..256, or whose
+  RESULT_BASE high word is not 0, is refused like a bad slot (status "error").
 
   The registers X0..FLAGS, JOB_ID and RESULT_SLOT fill a **job queue**, not a single job. The cores
   can compute a 256x256 tile in about 0.5-1 ms at shallow zoom. With one job at a time they would
   idle while the HPS reacts to an interrupt and loads the next tile, and while the slowest pixels of
-  a tile finish. The queue is 4 jobs deep. A DONE FIFO holds the finished jobs and raises the
+  a tile finish. The queue is 8 job contexts: a push copies the job registers into a free one, and
+  the issuer takes them in push order. A DONE FIFO holds the finished jobs and raises the
   interrupt; it has 16 entries, more than `mandelbrotd` has result slots, so it can't overflow.
 - **Statistics:** jobs overlap in the cores, so a cycle count per job means nothing. A job reports only
   its iterations. Utilisation comes from the free-running totals: Δiterations / (Δcycles × nCores).
@@ -127,18 +133,33 @@ Status: phase 1 in progress (PC application milestone 1 is done, see
 
 ### HPS: `mandelbrotd` (C, Linux userspace)
 
-- **Hardware access:** UIO for the register block and the interrupt, plus a reserved physical buffer
-  for the results.
-  - First bring-up: `mem=` on the kernel command line and `/dev/mem`.
-  - Later: a device-tree `reserved-memory` node, or `u-dma-buf`.
-  - `f2sdram` is not cache-coherent, so the buffer needs an uncached mapping, a cached one with an
-    explicit sync (`u-dma-buf`), or the `fpga2hps` bridge, which is coherent through the CCU. See
-    the risks.
+- **Hardware access:** UIO for the register block and the interrupt (bring-up uses `/dev/mem`).
+- **Result buffer: huge pages** (decided 2026-11-13). The uncached `/dev/mem` mapping of reserved
+  memory reads at 23-148 MB/s, too close to the 110 MB/s link, so the buffer is ordinary cached RAM:
+  - `mandelbrotd` maps 4 MB of hugetlbfs pages (2 MB each, physically contiguous), locks them, and
+    finds their physical addresses in `/proc/self/pagemap`. Each 2 MB page holds 4 result slots, so
+    the slots need not be contiguous across pages: RESULT_BASE becomes per page, or the job's slot
+    address is computed by `mandelbrotd` (to settle in the experiment below).
+  - `f2sdram` is not cache-coherent: before reading a tile, `mandelbrotd` invalidates its lines
+    (`DC CIVAC`, allowed in userspace on arm64). The alternative is the GHRD's `fpga2hps` bridge,
+    which is coherent through the CCU and needs no invalidate, at the cost of rewiring the writer.
+  - Needs a short experiment first: huge pages reserved at boot (`hugepages=` or sysfs), the
+    pagemap lookup as root, a tile written by the FPGA and read back after the invalidate, and the
+    copy rate.
+  - Other options, kept in case huge pages fail:
+    - `u-dma-buf`, the usual open-source module for exactly this: a cached buffer with explicit
+      sync calls. It is not in this kernel (`CONFIG_UDMABUF` is off, and that is a different thing
+      anyway) and would have to be built out of tree, which depends on the board's kernel build tree.
+    - Reserved memory (the device-tree node at 0xBF00_0000, already in place) through `/dev/mem`,
+      pinned to an A76 core with 128-bit loads: 148 MB/s, about 35 % above the link, with little
+      margin for splitting the records into planes.
+    - A small kernel driver of our own that maps the reserved memory cached and exposes a sync
+      ioctl: the same as `u-dma-buf`, but more code to maintain.
 - **Thin bridge:** each tile request from the PC becomes one FPGA job,
   with its parameters copied unchanged into the job registers (they are already in the hardware
   format). It keeps the FPGA job queue full, and sends each finished tile back with its request id.
 - **Result buffers:** 8 slots of 256x256x8 B = 512 KB (4 MB in all) in the reserved memory. A request
-  holds a slot from the moment its job is pushed until its tile is sent: up to 4 in the FPGA queue,
+  holds a slot from the moment its job is pushed until its tile is sent: up to 8 in the FPGA queue,
   the others being copied and sent. `mandelbrotd`
   writes RESULT_BASE and RESULT_SLOTS once at start, and gives each job a slot index.
 - **Flow control:** at most as many requests in flight as there are result slots (the number is sent
@@ -242,7 +263,10 @@ The goal is the whole data path working end to end, with no new arithmetic yet.
 2. Read and write a test register on `lwhps2fpga` from Linux (`devmem`). Write a test pattern into
    reserved HPS memory through `f2sdram`, read it back from Linux, and measure the read speed.
 3. New Spinal top `De25NanoHpsTop` with `qsys_top` as a BlackBox, and `MandelbrotAccel` with the
-   register map above, around the existing 19-bit cores (60 cores).
+   register map above, on per-slot cores (`SlotCore`): a slot that finishes hands over its result
+   (u32 count, |z|², pixel index, job context) and takes the next pixel from the pixel issuer, with
+   2 more integer bits (21 bits). This merges the old steps 3 and 4 (decided 2026-11-13: no
+   wrapper around the batch `Core`).
    - **Fan control:** the AMC6821 fan controller (I2C address 0x5C on the HDMI I2C pins, FPGA side
      only, so Linux can't reach it) runs the fan at full speed until the FPGA configures it.
      Instantiate Terasic's `BOARD_MANAGEMENT` IP (`Demonstration/FPGA/Board_Info_RTL/board_management_ip`)
@@ -250,9 +274,7 @@ The goal is the whole data path working end to end, with no new arithmetic yet.
      files are copied at build time, like the other Terasic files. Its temperature and RPM outputs
      go to BOARD_TEMP and FAN_RPM (they change slowly, so a plain two-flop crossing is enough).
      Not simulated: the testbench of step 7 ties these inputs off.
-4. Rework `Core` from batches (LOAD, CALC, UNLOAD) to per-slot refill: a slot that finishes hands
-   over its result (u32 count, |z|², pixel index, job id) and takes the next pixel from the pixel
-   issuer. Add 2 integer bits (see the risks).
+4. (merged into step 3)
 5. `mandelbrotd`: UIO, result slots, request queue, TCP protocol.
 6. PC application (`pc/`), milestones 1-6 of [PC_APP_PLAN.md](PC_APP_PLAN.md). The board connection is
    milestone 4; the disk cache and the tools come after it.
@@ -290,6 +312,38 @@ boot, with Ethernet and ssh. What the board showed:
 - For later: `/sys/kernel/config/device-tree` exists (overlays can add the UIO node), hugetlbfs is
   enabled, and `u-dma-buf` is not in the kernel (`CONFIG_UDMABUF` is off; it would be an
   out-of-tree module).
+
+**Step 3 is done (2026-11-13): the accelerator works on the board.**
+
+- `De25NanoHpsTop` (`spinal/.../De25NanoHps.scala`, built with `make hps` in `quartus/`): the GHRD's
+  Platform Designer system reshaped by `quartus/hps_qsys.tcl`, its IP upgraded to Quartus 26.1, and
+  the GHRD's boot loader. The platform alone was tested on the board: registers from Linux at
+  0x2000_0000 (Avalon-MM out of the bridge, not AXI-Lite), the fan in auto mode (about 3600 RPM at
+  32 °C instead of full speed), single beats on `f2sdram`. The HPS IP does not build with `f2sdram`
+  enabled and nothing reading it. Terasic's `f2sdram_adapter` sets the AXI protection, cache and
+  user bits.
+- `MandelbrotAccel` (`MandelbrotAccel.scala`): 8 job contexts, the issuer, dispatch and result
+  trees, `SlotCore`s (`SlotCore.scala`), and a writer that sends each record as one AXI beat with
+  strobes (no write combining yet). `AccelPlatform` crosses the bus (`fpgalib.AvalonMMCC`) and the
+  AXI channels (`StreamFifoCC`) from the 100 MHz bridge clock to the core clock (`core_pll` on
+  CLOCK1_50). Interrupt on `f2h_irq0` bit 0, no Linux driver yet.
+- Tests: `SlotCoreSim` and `AccelSim` against the bit-exact `AccelModel`; on the board,
+  `hps/accel_test.py check` compares every record of 6 kinds of tiles with the same model in Python
+  (all match, and abort works).
+- Build: 60 cores at 198 MHz, setup slack +0.17 ns; 97 % of the ALMs, 180 of 376 DSP blocks, 76 % of
+  the RAM blocks. Little room for more logic: write combining or new features may need fewer cores.
+- Throughput (`accel_test.py bench`, 256x256 tiles over the whole set, Python polling DONE):
+
+  | MAX_IT | tiles/s | M pixels/s | G iterations/s | utilisation |
+  |---|---|---|---|---|
+  | 16 | 646 | 42.3 | 0.25 | 2 % |
+  | 256 | 696 | 45.6 | 2.16 | 18 % |
+  | 4096 | 204 | 13.4 | 9.26 | 78 % |
+
+  Shallow tiles stop at about 45 M pixels/s, which is the single-beat writes on `f2sdram`: 3 times
+  the 14 M pixels/s the link carries, so write combining is not needed for phase 1. Deep tiles reach
+  78 % of 60 x 198 M iterations/s (each pixel also takes one extra pass for its bailout test).
+- The bitstream is loaded over JTAG, so a power cycle brings back the GHRD from the QSPI flash.
 
 Steps 1-2 hold the biggest unknowns (the HPS bridges, `f2sdram`, the kernel), and the PC application
 needs no board until its milestone 4. So start both at the same time.
@@ -345,15 +399,13 @@ per width, and no tuning for one more core.
 - Truncation error accumulated over many iterations: verify the error stays below the pixel step
   for the chosen guard bits.
 - 260-bit adders at 198 MHz: pipeline depth vs. ALM use, to be checked at W = 64 first.
-- `f2sdram` is not cache-coherent, and the uncached `/dev/mem` mapping of the result buffer is too
-  slow (measured in phase 1 step 2: 23-148 MB/s against a 110 MB/s link). `mandelbrotd` needs a
-  cached mapping. To decide before step 5, in this order of preference:
-  1. hugetlbfs pages as the buffer (cached, physical address from `/proc/self/pagemap`, no kernel
-     module), written through the coherent `fpga2hps` bridge, or through `f2sdram` with a cache
-     invalidate (`DC CIVAC`, allowed in userspace on arm64) before each read;
-  2. `u-dma-buf` as an out-of-tree module, if the kernel build tree on the board is usable;
-  3. keep `/dev/mem`, pin `mandelbrotd` to an A76 core and read with 128-bit loads (148 MB/s, little
-     margin).
+- The uncached `/dev/mem` mapping of the result buffer is too slow (23-148 MB/s against a 110 MB/s
+  link), hence huge pages (see `mandelbrotd`, "Result buffer"). Risk: the cache invalidate from
+  userspace, or the pagemap lookup, may not behave as expected on this kernel; the experiment
+  comes first.
+- Integer bits in phase 1: I = 5 with bailout 4 can't overflow before the bailout is seen (|c| < 2
+  gives |z_n| < 6; any other c escapes at n = 1). |z|² at escape reaches 512 (for |c| near 16), so
+  it is reported with 22 fraction bits in 32.
 - Integer bits of the escape test: z itself fits I = 10, but the z that escapes reaches about 258,
   so its squares reach about 66 000 (17 integer bits), and (x+y)² twice that. The truncated squarer
   has to keep those top bits for the escape test and for the |z|² output. Put it in the reference

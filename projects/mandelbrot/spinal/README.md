@@ -31,6 +31,7 @@ cosim/run.sh                               # SV core_wrapper vs CoreWrapper, cyc
 X_RES=32 Y_RES=4 N=16 FRAC_WIDTH=16 cosim/run.sh
 cosim/run_parts.sh                         # SV color_converter + display_driver vs Spinal, cycle by cycle
 sbt "runMain mandelbrot.GenerateDe25Nano"  # DE25-Nano top level -> gen/sp_De25NanoTop.v
+sbt "runMain mandelbrot.GenerateDe25NanoHps" # DE25-Nano top level with the HPS -> gen/sp_De25NanoHpsTop.v
 make -C ../quartus                         # DE25-Nano bitstream (needs Quartus Pro), see below
 ```
 
@@ -172,6 +173,38 @@ After configuration the design renders the full set once (`initialView` in `Syst
 | 3 | render requested, not yet accepted |
 | 5 | LPDDR4 calibration failed |
 | 7 | heartbeat (core clock) |
+
+### HPS design (`De25NanoHpsTop`)
+
+Phase 1 of [../ROADMAP.md](../ROADMAP.md): the HPS (Linux) with `MandelbrotAccel` (registers on
+`lwhps2fpga`, result records on `f2sdram`) and Terasic's fan controller.
+
+| file | content |
+|---|---|
+| `SlotCore.scala` | `AccelConfig`, `EscapeIteration`, `SlotCore` (per-slot refill, 32-bit counts, \|z\|²) |
+| `MandelbrotAccel.scala` | register map (`AccelRegs`), job contexts, issuer, dispatch/result trees, writer; `AccelPlatform` (clock crossings) |
+| `De25NanoHps.scala` | the board top level, `core_pll` |
+| `../../../spinal/.../De25NanoHpsIp.scala`, `AvalonMMCC.scala` | `qsys_top`, `BOARD_MANAGEMENT` BlackBoxes; Avalon-MM clock crossing |
+| `src/test/.../AccelModel.scala` | bit-exact model of the records, used by `SlotCoreSim` and `AccelSim` |
+
+On the board, `../hps/accel_test.py check` runs tiles and checks every record against the same
+model, and `accel_test.py bench` measures throughput.
+
+```bash
+cd ../quartus
+make hps            # -> build_hps/output_files/mandelbrot_hps_spl.sof
+make program-hps    # over JTAG; the HPS restarts and Linux boots again
+```
+
+- The Platform Designer system is Terasic's GHRD (`Demonstration/SoC_FPGA/GHRD`), reshaped by
+  `quartus/hps_qsys.tcl`: `lwhps2fpga` comes out as an Avalon-MM master (4 KB at 0x2000_0000 for
+  Linux), `f2sdram` as an AXI4 slave, plus the FPGA-to-HPS interrupts. The GHRD's JTAG masters on
+  the on-chip RAM and on `fpga2hps` stay.
+- The GHRD's IP is from Quartus 25.1; the Makefile upgrades it (`quartus_sh --ip_upgrade`).
+- `quartus_pfg` adds the boot loader of the GHRD (`u-boot-spl-dtb.hex`) to the `.sof`.
+- The fan: `BOARD_MANAGEMENT` (Terasic's Board_Info_RTL demo) in auto mode, on the HDMI I2C pins.
+- LEDs (on = low): 0 fan controller reachable on I2C, 1 accelerator busy, 7 heartbeat (bridge clock).
+- Options as for the HDMI design: `make hps NCORES=.. CORE_MHZ=.. FRAC_WIDTH=.. SI_LATENCY=..`.
 
 ### UART control (replaces the VIO)
 

@@ -22,7 +22,8 @@ import moderngl
 from imgui_bundle import hello_imgui, imgui
 
 from . import protocol as p
-from .colouring import PRESETS, bake
+from .colouring import (DEFAULT_DENSITY, MODES, PALETTE_MODES, PRESETS, bake, histogram_cdf, load_palettes,
+                        save_palettes)
 from .gl_view import TileRenderer
 from .headless import write_png
 from .net import Connection
@@ -69,9 +70,22 @@ class App:
         self.history: list[View] = []
         self.last_push = 0.0
         self.max_it = args.max_it
-        self.palette = "ultra"
-        self.density_log = math.log2(1 / 64)  # palette cycles per iteration, as a power of 2
+        # colouring (PC_APP_PLAN.md, "Colouring")
+        self.mode = args.colouring
+        self.density_log = {m: math.log2(d) for m, d in DEFAULT_DENSITY.items()}  # per mode, a power of 2
         self.offset = 0.0
+        self.cycle = 0.0  # palette cycles per second
+        self.interior = [0.0, 0.0, 0.0]
+        self.unresolved = [0.0, 0.0, 0.0]
+        self.gamma = 1.0
+        self.user_palettes = load_palettes()
+        self.palette = args.palette if args.palette in self.palettes() else "ultra"
+        self.editing = False  # the gradient editor is open, on self.edit_points
+        self.edit_points: list[list] = []
+        self.edit_name = ""
+        self.cdf_key = None  # what the histogram was computed from
+        self.cdf_time = 0.0
+        self.frame_time = time.monotonic()
         self.ctx = None
         self.renderer = None
         self.size = (0, 0)  # framebuffer, physical pixels
@@ -169,7 +183,7 @@ class App:
     def post_init(self):
         self.ctx = moderngl.create_context()
         self.renderer = TileRenderer(self.ctx, self.store.capacity)
-        self.renderer.set_palette(bake(PRESETS[self.palette]))
+        self.renderer.set_palette(bake(self.palettes()[self.palette]))
         if self.args.sim or self.args.host:
             self.connect()
 
@@ -194,14 +208,30 @@ class App:
             return
         self.mgr.update(self.view, w, h)
         self.renderer.upload(self.store.take_uploads())
-        self.renderer.density = 2.0**self.density_log
-        self.renderer.offset = self.offset
+        self._update_colouring(w, h)
         self.renderer.draw(self.mgr.draw_list(self.view, w, h), w, h)
 
         now = time.monotonic()
         if self.conn.info.features & p.FEATURE_BOARD_STATUS and now - self.status_time > 1.0:
             self.conn.request_status()
             self.status_time = now
+
+    def _update_colouring(self, w: int, h: int):
+        now = time.monotonic()
+        dt, self.frame_time = now - self.frame_time, now
+        if self.cycle:
+            self.offset = (self.offset + self.cycle * dt) % 1.0
+        c = self.renderer.colouring
+        c.mode, c.offset, c.gamma = self.mode, self.offset, self.gamma
+        c.density = 2.0 ** self.density_log.get(self.mode, 0.0)
+        c.interior, c.unresolved = tuple(self.interior), tuple(self.unresolved)
+        c.max_it, c.bailout_r2 = self.max_it, float(self.conn.info.bailout_r2)
+        if self.mode == "histogram":  # recomputed when the screen changed, at most 4 times a second
+            st = self.mgr.stats
+            key = (self.view, w, h, self.max_it, st.received, st.synthesized)
+            if key != self.cdf_key and (now - self.cdf_time > 0.25 or self.cdf_key is None):
+                c.cdf, c.cdf_lo, c.cdf_hi = histogram_cdf(self.mgr.on_screen(self.view, w, h), c.bailout_r2)
+                self.cdf_key, self.cdf_time = key, now
 
     def before_swap(self):
         if not self.args.screenshot:
@@ -386,15 +416,127 @@ class App:
         if self.mgr.paused:
             imgui.text_colored(imgui.ImVec4(1, 0.8, 0.3, 1), "stopped (move or press R to resume)")
 
+    # ------------------------------------------------------------------------------- colouring
+
+    def palettes(self) -> dict:
+        return {**PRESETS, **self.user_palettes}
+
+    def _set_palette(self, name: str):
+        self.palette = name
+        self.renderer.set_palette(bake(self.palettes()[name]))
+
     def _colour_panel(self):
-        names = list(PRESETS)
-        changed, i = imgui.combo("palette", names.index(self.palette), names)
-        if changed:
-            self.palette = names[i]
-            self.renderer.set_palette(bake(PRESETS[self.palette]))
-        _, self.density_log = imgui.slider_float("density", self.density_log, -12.0, 0.0,
-                                                 f"2^%.1f cycles per iteration")
+        _, i = imgui.combo("colouring", MODES.index(self.mode), MODES)
+        if MODES[i] != self.mode:
+            self.mode, self.cdf_key = MODES[i], None
+        r2 = self.conn.info.bailout_r2
+        if self.mode != "escape" and r2 < 256:
+            imgui.text_colored(imgui.ImVec4(1, 0.8, 0.3, 1), f"R^2 = {r2}: smooth values show bands "
+                               "(the wide formats have R^2 = 256)")
+        if self.mode in PALETTE_MODES:
+            names = list(self.palettes())
+            imgui.begin_disabled(self.editing)
+            changed, i = imgui.combo("palette", names.index(self.palette), names)
+            imgui.end_disabled()
+            if changed:
+                self._set_palette(names[i])
+            imgui.same_line()
+            if imgui.button("Close editor" if self.editing else "Edit"):
+                self._toggle_editor()
+        unit = {"escape": "cycles per iteration", "smooth": "cycles per iteration",
+                "log-smooth": "cycles per doubling of nu", "histogram": "cycles per screen",
+                "hsv": "x nu / max_it", "lch": "x nu / max_it"}[self.mode]
+        _, self.density_log[self.mode] = imgui.slider_float(
+            "density", self.density_log[self.mode], -12.0, 6.0, f"2^%.1f {unit}")
         _, self.offset = imgui.slider_float("offset", self.offset, 0.0, 1.0)
+        _, self.cycle = imgui.slider_float("cycling", self.cycle, -1.0, 1.0, "%.2f cycles/s")
+        imgui.same_line()
+        if imgui.button("stop"):
+            self.cycle = 0.0
+        _, self.gamma = imgui.slider_float("gamma", self.gamma, 0.3, 3.0, "%.2f")
+        _, self.interior = imgui.color_edit3("interior", self.interior, imgui.ColorEditFlags_.no_inputs)
+        imgui.same_line()
+        _, self.unresolved = imgui.color_edit3("unresolved (max_it)", self.unresolved,
+                                               imgui.ColorEditFlags_.no_inputs)
+        if self.editing and self.mode in PALETTE_MODES:
+            self._gradient_editor()
+
+    def _toggle_editor(self):
+        self.editing = not self.editing
+        if self.editing:
+            self.edit_points = [[pos, list(rgb)] for pos, rgb in self.palettes()[self.palette]]
+            self.edit_name = self.palette if self.palette in self.user_palettes else self.palette + " 2"
+        else:
+            self._set_palette(self.palette)  # drop unsaved edits
+
+    def _gradient_editor(self):
+        imgui.separator()
+        pts = self.edit_points
+        changed = False
+        # the gradient, as 128 bars
+        rgb = bake([(pos, tuple(c)) for pos, c in pts], 128)
+        dl, origin = imgui.get_window_draw_list(), imgui.get_cursor_screen_pos()
+        width, height = 320.0, 18.0
+        for i, c in enumerate(rgb):
+            x0 = origin.x + width * i / len(rgb)
+            dl.add_rect_filled(imgui.ImVec2(x0, origin.y), imgui.ImVec2(x0 + width / len(rgb) + 1, origin.y + height),
+                               imgui.get_color_u32(imgui.ImVec4(*(float(x) / 255.0 for x in c), 1.0)))
+        for pos, _ in pts:  # control point marks
+            x = origin.x + width * pos
+            dl.add_triangle_filled(imgui.ImVec2(x, origin.y + height), imgui.ImVec2(x - 4, origin.y + height + 7),
+                                   imgui.ImVec2(x + 4, origin.y + height + 7), imgui.get_color_u32(imgui.ImVec4(1, 1, 1, 1)))
+        imgui.dummy(imgui.ImVec2(width, height + 8))
+        remove = None
+        for i, pt in enumerate(pts):
+            imgui.push_id(i)
+            c1, pt[1] = imgui.color_edit3("##c", pt[1], imgui.ColorEditFlags_.no_inputs)
+            imgui.same_line()
+            imgui.set_next_item_width(200)
+            c2, pt[0] = imgui.slider_float("##pos", pt[0], 0.0, 0.999, "at %.3f")
+            changed |= c1 or c2
+            if len(pts) > 1:
+                imgui.same_line()
+                if imgui.small_button("remove"):
+                    remove = i
+            imgui.pop_id()
+        if remove is not None:
+            del pts[remove]
+            changed = True
+        if imgui.button("Add point"):  # in the middle of the widest gap, with the colour there
+            order = sorted(p[0] for p in pts)
+            gaps = [((order[(k + 1) % len(order)] - order[k]) % 1.0 or 1.0, order[k]) for k in range(len(order))]
+            gap, start = max(gaps)
+            pos = (start + gap / 2) % 1.0
+            pts.append([pos, list(bake([(q, tuple(c)) for q, c in pts], 1024)[int(pos * 1024)] / 255.0)])
+            changed = True
+        if changed:
+            self.renderer.set_palette(bake([(pos, tuple(c)) for pos, c in pts]))
+        imgui.set_next_item_width(200)
+        _, self.edit_name = imgui.input_text("name", self.edit_name)
+        imgui.same_line()
+        name = self.edit_name.strip()
+        imgui.begin_disabled(not name or name in PRESETS)
+        if imgui.button("Save"):
+            self.user_palettes[name] = sorted((pos, tuple(c)) for pos, c in pts)
+            self._save_palettes(f"saved palette {name!r}")
+            self.palette, self.editing = name, False
+        imgui.end_disabled()
+        if self.palette in self.user_palettes:
+            imgui.same_line()
+            if imgui.button("Delete"):
+                del self.user_palettes[self.palette]
+                self._save_palettes(f"deleted palette {self.palette!r}")
+                self.editing = False
+                self._set_palette("ultra")
+        if name in PRESETS:
+            imgui.text_disabled("presets can't be overwritten; choose another name")
+
+    def _save_palettes(self, what: str):
+        try:
+            save_palettes(self.user_palettes)
+            self.say(what)
+        except OSError as e:
+            self.say(f"could not save the palettes: {e}")
 
     def _stats_panel(self):
         m = self.mgr
@@ -431,6 +573,8 @@ def main():
     ap.add_argument("--im", default="0", help="centre, imaginary part")
     ap.add_argument("--level", type=int, help="zoom level (default: the whole set)")
     ap.add_argument("--max-it", type=int, default=256)
+    ap.add_argument("--colouring", choices=MODES, default="smooth")
+    ap.add_argument("--palette", default="ultra", help="a preset or a saved palette")
     ap.add_argument("--size", default="1280x800", help="window size, WxH")
     ap.add_argument("--screenshot", help="save the window to this PNG once the view is complete, then exit")
     ap.add_argument("--wait", type=float, default=30.0, help="with --screenshot: give up after this many seconds")

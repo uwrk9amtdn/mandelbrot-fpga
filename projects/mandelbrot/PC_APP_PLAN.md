@@ -363,7 +363,18 @@ level above and below around the cursor.
    - Differences from the plan: Esc stops requesting until the next move (otherwise the visible
      tiles would be requested again at once); the |z|² array is uploaded but not used until the
      smooth colourings; the panels are one window (Connection, View, Colouring, Statistics, Help).
-3. **Colouring:** smooth, log-smooth, histogram, HSV/LCH, palettes and the gradient editor, panels.
+3. **Colouring (done 2026-11-16):** smooth, log-smooth, histogram, HSV/LCH, palettes and the gradient
+   editor, panels. Modes and their formulas: `colouring.py` (docstring), the shader in `gl_view.py`.
+   - Tests: `test_gl_view.py` renders every mode and compares it with the numpy reference in
+     `colouring.py` (99.5 % of pixels within 2 of 255, interior and unresolved exactly);
+     `test_colouring.py` covers nu, the CDF, LCH and the palette file. Driven under Xvfb, and
+     against the board at W = 64.
+   - Differences from the plan: density also scales s = nu / max_it in hsv and lch (1 is the
+     Wikipedia formula, which at shallow zoom gives nearly one colour); the histogram counts the
+     on-screen pixels of the current level and max_it, binned per iteration with the CDF linear
+     inside one, in a 4096-entry texture over [min n, max n + 1]; user palettes are saved in
+     `~/.config/mandelbrot-fpga/palettes.json` (bookmarks, milestone 6, can reuse the format);
+     density is kept per mode.
 4. **Board:** connect to `mandelbrotd` as soon as the FPGA and HPS side of phase 1 is ready; compare
    with the simulated server; measure throughput. Nothing below is needed for this. STATUS_REQ and
    STATUS go into `protocol.py`, the simulated server and `headless.py` (which prints them) here;

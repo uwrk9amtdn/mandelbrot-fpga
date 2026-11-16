@@ -9,7 +9,7 @@ on the thread that owns the context (the UI thread).
 import moderngl
 import numpy as np
 
-from .colouring import PALETTE_SIZE
+from .colouring import CDF_SIZE, MODES, PALETTE_SIZE, Colouring
 from .tiles import Quad, Tile
 from .view import TILE
 
@@ -32,22 +32,74 @@ void main() {
 FRAGMENT = """
 #version 330
 uniform usampler2DArray counts;
+uniform sampler2DArray zz;
 uniform sampler2D palette;
-uniform float density;   // palette cycles per iteration
-uniform float offset;    // palette shift, 0..1
-uniform vec3 interior;   // pixels that did not escape
+uniform sampler2D cdf;
+uniform int mode;          // index in colouring.MODES
+uniform float density;     // palette cycles per unit of v
+uniform float offset;      // palette shift (hue shift in hsv and lch), 0..1
+uniform vec3 interior;     // proven interior
+uniform vec3 unresolved;   // reached max_it
+uniform float gamma;
+uniform float max_it;
+uniform float log_r2;      // ln R^2
+uniform vec2 cdf_range;    // nu at the first and the last CDF entry
 in vec2 uv;
 flat in int v_layer;
 out vec4 colour;
+
+vec3 hsv_to_rgb(float h, float s, float v) {  // h in degrees
+    vec3 k = mod(vec3(5.0, 3.0, 1.0) + h / 60.0, 6.0);
+    return v - v * s * clamp(min(k, 4.0 - k), 0.0, 1.0);
+}
+
+vec3 lch_to_srgb(float L, float C, float H) {  // CIE LCh(ab), D65
+    float h = radians(H);
+    float fy = (L + 16.0) / 116.0;
+    vec3 f = vec3(fy + C * cos(h) / 500.0, fy, fy - C * sin(h) / 200.0);
+    vec3 cube = f * f * f;
+    vec3 lin3 = 3.0 * (6.0 / 29.0) * (6.0 / 29.0) * (f - 4.0 / 29.0);
+    vec3 xyz = mix(lin3, cube, step(6.0 / 29.0 + 1e-7, f)) * vec3(0.95047, 1.0, 1.08883);
+    vec3 lin = clamp(mat3(3.2406, -0.9689, 0.0557,      // columns
+                          -1.5372, 1.8758, -0.2040,
+                          -0.4986, 0.0415, 1.0570) * xyz, 0.0, 1.0);
+    return mix(1.055 * pow(lin, vec3(1.0 / 2.4)) - 0.055, 12.92 * lin, step(lin, vec3(0.0031308)));
+}
+
 void main() {
     ivec2 p = clamp(ivec2(uv * 256.0), ivec2(0), ivec2(255));
     uint n = texelFetch(counts, ivec3(p, v_layer), 0).r;
-    if (n >= 0xFFFFFFFEu) {
-        colour = vec4(interior, 1.0);
-        return;
+    vec3 rgb;
+    if (n == 0xFFFFFFFEu) {
+        rgb = interior;
+    } else if (n == 0xFFFFFFFFu) {
+        rgb = unresolved;
+    } else {
+        float z2 = texelFetch(zz, ivec3(p, v_layer), 0).r;
+        float nu = float(n) + 1.0 - log2(log(max(z2, exp(log_r2))) / log_r2);
+        if (mode <= 3) {
+            float v;
+            if (mode == 0) v = float(n);
+            else if (mode == 1) v = nu;
+            else if (mode == 2) v = log2(1.0 + max(nu, 0.0));
+            else {
+                float x = clamp((nu - cdf_range.x) / max(cdf_range.y - cdf_range.x, 1e-9), 0.0, 1.0);
+                float size = float(textureSize(cdf, 0).x);
+                v = texture(cdf, vec2((x * (size - 1.0) + 0.5) / size, 0.5)).r;
+            }
+            rgb = texture(palette, vec2(fract(v * density + offset), 0.5)).rgb;
+        } else {
+            float s = max(nu, 0.0) / max(max_it, 1.0) * density;
+            float hue = mod(pow(360.0 * s, 1.5) + 360.0 * offset, 360.0);
+            if (mode == 4) rgb = hsv_to_rgb(hue, 1.0, 1.0);
+            else {
+                float c = cos(3.14159265 * s);
+                float vv = 1.0 - c * c;
+                rgb = lch_to_srgb(75.0 - 75.0 * vv, 28.0 + 75.0 - 75.0 * vv, hue);
+            }
+        }
     }
-    float t = fract(float(n) * density + offset);
-    colour = vec4(texture(palette, vec2(t, 0.5)).rgb, 1.0);
+    colour = vec4(pow(clamp(rgb, 0.0, 1.0), vec3(1.0 / gamma)), 1.0);
 }
 """
 
@@ -64,12 +116,15 @@ class TileRenderer:
         self.palette.filter = (moderngl.LINEAR, moderngl.LINEAR)
         self.palette.repeat_x = True
 
+        self.cdf = ctx.texture((CDF_SIZE, 1), 1, dtype="f4")
+        self.cdf.filter = (moderngl.LINEAR, moderngl.LINEAR)
+        self.cdf.repeat_x = self.cdf.repeat_y = False
+
         self.prog = ctx.program(vertex_shader=VERTEX, fragment_shader=FRAGMENT)
-        self.prog["counts"] = 0
-        self.prog["palette"] = 1
-        self.density = 1.0 / 64
-        self.offset = 0.0
-        self.interior = (0.0, 0.0, 0.0)
+        for unit, name in enumerate(("counts", "zz", "palette", "cdf")):
+            self.prog[name] = unit
+        self.colouring = Colouring()
+        self._cdf = None  # the array in the texture
 
         corners = np.array([0, 0, 1, 0, 0, 1, 1, 1], "f4")
         self.corner_buf = ctx.buffer(corners.tobytes())
@@ -100,14 +155,25 @@ class TileRenderer:
             self.inst_buf.orphan(data.nbytes)
         self.inst_buf.write(data.tobytes())
         self.prog["screen"] = (float(width), float(height))
-        self.prog["density"] = float(self.density)
-        self.prog["offset"] = float(self.offset)
-        self.prog["interior"] = tuple(float(c) for c in self.interior)
-        self.counts.use(0)
-        self.palette.use(1)
+        c = self.colouring
+        if c.mode == "histogram" and self._cdf is not c.cdf:  # a new CDF is a new array
+            self.cdf.write(np.ascontiguousarray(c.cdf, "<f4").tobytes())
+            self._cdf = c.cdf
+        self.prog["mode"] = MODES.index(c.mode)
+        self.prog["density"] = float(c.density)
+        self.prog["offset"] = float(c.offset)
+        self.prog["interior"] = tuple(float(x) for x in c.interior)
+        self.prog["unresolved"] = tuple(float(x) for x in c.unresolved)
+        self.prog["gamma"] = float(c.gamma)
+        self.prog["max_it"] = float(c.max_it)
+        self.prog["log_r2"] = float(np.log(c.bailout_r2))
+        self.prog["cdf_range"] = (float(c.cdf_lo), float(c.cdf_hi))
+        for unit, tex in enumerate((self.counts, self.zz, self.palette, self.cdf)):
+            tex.use(unit)
         self.ctx.disable(moderngl.BLEND | moderngl.DEPTH_TEST | moderngl.CULL_FACE)
         self.vao.render(moderngl.TRIANGLE_STRIP, vertices=4, instances=len(quads))
 
     def release(self):
-        for o in (self.vao, self.inst_buf, self.corner_buf, self.prog, self.palette, self.zz, self.counts):
+        for o in (self.vao, self.inst_buf, self.corner_buf, self.prog, self.cdf, self.palette, self.zz,
+                  self.counts):
             o.release()

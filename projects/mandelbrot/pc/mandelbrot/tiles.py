@@ -301,3 +301,18 @@ class TileManager:
         for _, _, k in order:
             self.store.touch(k)
         return [q for _, q, _ in order]
+
+    def on_screen(self, view: View, width: int, height: int) -> list[tuple[np.ndarray, np.ndarray]]:
+        """(counts, zz) of the current level and settings, cropped to the screen: what the histogram
+        colouring counts."""
+        out = []
+        for tile in self.store.tiles():
+            k = tile.key
+            if k.level != view.level or k.max_it != self.max_it or k.flags != (self.flags & p.RESULT_FLAGS):
+                continue
+            left, top = TILE * k.tx - view.x0, TILE * k.ty - view.y0
+            x0, y0 = max(0, -left), max(0, -top)
+            x1, y1 = min(TILE, width - left), min(TILE, height - top)
+            if x0 < x1 and y0 < y1:
+                out.append((tile.counts[y0:y1, x0:x1], tile.zz[y0:y1, x0:x1]))
+        return out

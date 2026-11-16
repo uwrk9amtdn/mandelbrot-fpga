@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from mandelbrot import protocol as p
-from mandelbrot.colouring import PALETTE_SIZE, PRESETS, bake
+from mandelbrot.colouring import MODES, PALETTE_MODES, PALETTE_SIZE, PRESETS, Colouring, bake, histogram_cdf, reference
 from mandelbrot.tiles import Quad, TileKey, TileStore
 from mandelbrot.view import TILE
 
@@ -25,13 +25,13 @@ def ctx():
     c.release()
 
 
-def render(ctx, quads, store, width, height, palette):
+def render(ctx, quads, store, width, height, palette, colouring=None, smooth=False):
     from mandelbrot.gl_view import TileRenderer
 
     r = TileRenderer(ctx, capacity=8)
-    r.set_palette(palette, smooth=False)
-    r.density, r.offset = 1.0 / PALETTE_SIZE, 0.5 / PALETTE_SIZE  # count n -> palette entry n
-    r.interior = (0.0, 0.0, 0.0)
+    r.set_palette(palette, smooth=smooth)
+    # by default count n -> palette entry n
+    r.colouring = colouring or Colouring(mode="escape", density=1.0 / PALETTE_SIZE, offset=0.5 / PALETTE_SIZE)
     r.upload(store.take_uploads())
     fbo = ctx.simple_framebuffer((width, height), components=3)
     fbo.use()
@@ -65,3 +65,31 @@ def test_tiles_placed_and_coloured(ctx):
     big = np.repeat(np.repeat(counts[1], 2, 0), 2, 1)  # 2x nearest
     assert np.array_equal(img[10:300, 206:400], expect(big[0:290, 0:194]))
     assert (img[236:300, 0:206] == 51).all()  # background, (0.2 * 255) where nothing is drawn
+
+
+def wide_tile(rng):
+    """Counts and |z|^2 as the wide formats give them (R^2 = 256: |z_n|^2 in (256, 256^2])."""
+    counts = rng.integers(1, 2000, (TILE, TILE), dtype=np.uint32)
+    zz = np.exp(rng.uniform(np.log(256.0), 2 * np.log(256.0), (TILE, TILE))).astype(np.float32)
+    counts[:8, :] = p.INTERIOR
+    counts[8:16, :] = p.UNRESOLVED
+    return counts, zz
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_modes_match_reference(ctx, mode):
+    rng = np.random.default_rng(2)
+    counts, zz = wide_tile(rng)
+    store = TileStore(capacity=8)
+    t = store.put(TileKey(0, 0, 0, 2000, 0), counts, zz, 0)
+    c = Colouring(mode=mode, density=0.013 if mode in PALETTE_MODES else 9.0, offset=0.3, interior=(0.1, 0.2, 0.3),
+                  unresolved=(0.9, 0.8, 0.7), gamma=1.3, max_it=2000, bailout_r2=256.0)
+    if mode == "histogram":
+        c.cdf, c.cdf_lo, c.cdf_hi = histogram_cdf([(counts, zz)], 256.0)
+    palette = bake(PRESETS["ultra"])
+    img = render(ctx, [Quad(t.layer, 0, 0, TILE)], store, TILE, TILE, palette, c, smooth=True)
+    want = np.round(reference(counts, zz, c, palette) * 255.0)
+    diff = np.abs(img.astype(np.int32) - want.astype(np.int32)).max(axis=-1)
+    # f32 on the GPU against f64: a pixel whose palette position lands on a steep part may differ more
+    assert np.mean(diff <= 2) > 0.995, f"{np.mean(diff <= 2):.4f} of the pixels within 2"
+    assert (diff[:16] == 0).all()  # interior and unresolved exactly

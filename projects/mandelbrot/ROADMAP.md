@@ -403,7 +403,7 @@ colouring needs the larger bailout radius of the wide format; LZ4, UIO and the f
    tiles, all cores. It gives the FPGA vs CPU numbers per width for the report, and says honestly
    whether 128-bit fixed point on 5 cores beats the CPU (the expectation is: about the same).
 
-**Where phase 2 stands (2026-11-13):**
+**Where phase 2 stands (2026-11-16): steps 1-6 done, all three widths on the board.**
 
 - Step 1 done. `pc/mandelbrot/fixed.py` and `WideModel` (Scala) are the bit-exact model. Squares
   leave out the lowest diagonals while they are worth under a quarter ulp in total: 5 of 6 products
@@ -424,10 +424,24 @@ colouring needs the larger bailout radius of the wide format; LZ4, UIO and the f
   `test_board.py` use `fixed.py` for wide designs.
 - Step 5: `make hps WIDTH=64` (or 96, 128; 21 is the default) picks the core count from the DSP
   budget and keeps a copy of each width's bitstream; `make program-hps WIDTH=64` loads it.
-  - **W = 64 works on the board:** 12 cores at 198 MHz (setup slack +0.004 ns), 58 % of the ALMs,
-    180 DSP multipliers. `accel_test.py check` and all of `test_board.py` pass bit for bit against
-    `fixed.py`. 2.26 G iterations/s at max_it 4096 (95 % of 12 x 198 M), 1.34 G at max_it 256. The
-    viewer goes to level 192 (7.3e-12 per pixel at level 140, 3.4e10 magnification).
+  - W = 128 first missed 198 MHz by 0.8 ns, in the first stage of `WideIteration`; that stage is
+    now split into 3 (pipeline 11 at W = 64 and 96, 12 at 128), and all three widths were rebuilt.
+  - **All three work on the board at 198 MHz** (2026-11-16): `accel_test.py check` and all of
+    `test_board.py` pass bit for bit against `fixed.py`. `accel_test.py bench`, 200 tiles of the
+    whole set:
+
+    | W | cores | setup slack | ALMs | DSP | max_it 256 | max_it 4096 |
+    |---|---|---|---|---|---|---|
+    | 64 | 12 | +0.647 ns | 59 % | 180 | 1.39 G it/s (58 %) | 2.27 G it/s (95 %) |
+    | 96 | 7 | +0.544 ns | 54 % | 168 | 0.98 G it/s (71 %) | |
+    | 128 | 5 | +0.218 ns | 56 % | 165 | 0.78 G it/s (78 %) | |
+
+    (utilisation in brackets). At max_it 256 utilisation falls as cores are added, probably the
+    pixel hand-over or the result path; not measured yet. The viewer goes to level 192 at W = 64
+    (7.3e-12 per pixel at level 140, 3.4e10 magnification).
+  - The core count stays at the DSP budget: 9 cores at W = 128 don't fit (Quartus put 188
+    multipliers in DSP blocks and the other 109 in logic, 127k of 93.6k LUTs). The "376 DSP
+    blocks" in the reports count 18x19 halves.
 - Step 6: `pc/bench` (C++, OpenMP, all 24 threads of a Ryzen 9 9900X), 256x256 tiles of the whole
   set at max_it 4096: double (AVX-512) 11.2 G iterations/s, 64-bit fixed point 1.1 G, 128-bit fixed
   point 0.2 G. For comparison, the 21-bit FPGA design does 9.3 G, and W = 64 2.26 G: twice the

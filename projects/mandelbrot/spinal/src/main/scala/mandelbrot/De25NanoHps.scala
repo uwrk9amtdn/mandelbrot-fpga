@@ -111,10 +111,14 @@ class De25NanoHpsTop(cfg: AccelConfig = AccelConfig()) extends Component {
 /** Generates the DE25-Nano HPS top level (sp_De25NanoHpsTop.v) for quartus/.
   *
   * Usage: sbt "runMain mandelbrot.GenerateDe25NanoHps [key=value ...]"
-  * Keys: targetDir nCores fracWidth siLatency
+  * Keys: targetDir width nCores fracWidth siLatency
+  *  - width=21 (default): the narrow phase 1 cores; fracWidth and siLatency apply.
+  *  - width=64, 96 or 128: the wide cores (I = 10, R = 16); nCores defaults to what the 188 DSP
+  *    blocks allow (3 squares of WideParams.products 26x26 multipliers per core).
   */
 object GenerateDe25NanoHps {
-  private val keys = Set("targetDir", "nCores", "fracWidth", "siLatency")
+  private val keys = Set("targetDir", "width", "nCores", "fracWidth", "siLatency")
+  val dspBlocks    = 188
 
   def main(args: Array[String]): Unit = {
     val kv = args.map { a =>
@@ -125,9 +129,18 @@ object GenerateDe25NanoHps {
     }.toMap
     val d = AccelConfig()
     def int(k: String, v: Int) = kv.get(k).map(_.toInt).getOrElse(v)
-    val cfg = d.copy(nCores = int("nCores", d.nCores), fracWidth = int("fracWidth", d.fracWidth),
-      siLatency = int("siLatency", d.siLatency))
-    println(s"[mandelbrot] generating De25NanoHpsTop with $cfg")
+    val width = int("width", d.w)
+    val cfg =
+      if (width == d.w)
+        d.copy(nCores = int("nCores", d.nCores), fracWidth = int("fracWidth", d.fracWidth),
+          siLatency = int("siLatency", d.siLatency))
+      else {
+        val p = WideParams(width)
+        d.copy(intBits = p.i, fracWidth = p.f, wide = true,
+          nCores = int("nCores", dspBlocks / (3 * p.products.size)))
+      }
+    println(s"[mandelbrot] generating De25NanoHpsTop with $cfg (W = ${cfg.w}, ${cfg.nCores} cores, " +
+      s"pipeline ${cfg.latency})")
     MandelbrotSpinalConfig(kv.getOrElse("targetDir", "gen")).generateVerilog(new De25NanoHpsTop(cfg))
   }
 }

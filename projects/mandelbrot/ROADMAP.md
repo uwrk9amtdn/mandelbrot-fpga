@@ -381,11 +381,57 @@ for exploring (W ≥ 64) and to build the wide multiplier and carry-save parts t
 reuses. The speed comes in phases 3 and 4. So: one verified, parametric core and one honest number
 per width, and no tuning for one more core.
 
-1. Scala `BigInt` model of the truncated multi-limb squaring, with an error bound.
+Decided 2026-11-13: phase 2 comes before the colouring work (PC milestone 3), because smooth
+colouring needs the larger bailout radius of the wide format; LZ4, UIO and the flash wait.
+
+1. Bit-exact model of the truncated multi-limb squaring and the iteration, in Python
+   (`pc/mandelbrot/fixed.py`, also the simulated server's future exact mode) and in Scala (for the
+   RTL tests). An error study before any RTL: the truncation against exact squares, and the counts
+   against a much wider reference at the deepest level, to settle the guard bits.
 2. `WideSquare` (limbs, symmetric products, truncation, pipelined carry-save tree), tested on its own.
-3. `WideIteration` / `WideCore` with the W and I parameters.
-4. One build per W with the core count from the DSP budget above (13, 7, 5). If it misses 198 MHz,
-   take cores out or lower the clock, and move on; update CAPS and the tools.
+3. `WideIteration` in the per-slot core, with the W and I parameters (I = 10, R = 16), and the |z|²
+   output converted to f32 from the wide value.
+4. The rest of the chain for W up to 128: `mandelbrotd` (coordinates of several words), `AccelModel`,
+   `accel_test.py`, `test_board.py`. The 21-bit design stays as a build option (`WIDTH=21`): it is
+   about 10 times faster at shallow zoom, and both don't fit one bitstream (5 wide cores take 175 of
+   the 188 DSP blocks), so switching means programming the FPGA again.
+5. One build per W, W = 64 first (it checks the wide adders at 198 MHz cheaply), with the core count
+   from the DSP budget above. If it misses 198 MHz, take cores out or lower the clock, and move on;
+   update CAPS and the tools.
+6. **CPU benchmark** (`pc/bench/`, C++): the same escape-time loop on the PC's CPU, in double
+   precision (AVX2/AVX-512) and in 64/128-bit fixed point (`__int128` and multi-word), on the same
+   tiles, all cores. It gives the FPGA vs CPU numbers per width for the report, and says honestly
+   whether 128-bit fixed point on 5 cores beats the CPU (the expectation is: about the same).
+
+**Where phase 2 stands (2026-11-13):**
+
+- Step 1 done. `pc/mandelbrot/fixed.py` and `WideModel` (Scala) are the bit-exact model. Squares
+  leave out the lowest diagonals while they are worth under a quarter ulp in total: 5 of 6 products
+  at W = 64, 8 of 10 at 96, 11 of 15 at 128, so 12, 7 and 5 cores in 188 DSP blocks. No overflow is
+  possible with I = 10, R = 16 (checked over random c in the whole format, `tests/test_fixed.py`).
+- Error study (`pc/tools/precision_study.py`): tiles on the boundary at 16, 1024 and 65536 ulps per
+  pixel, max_it 1500, against exact squares and against a format 64 bits wider. The left-out
+  products change no more counts than exact squares do (same columns), so **no guard bits**. What
+  remains is the format's own precision against max_it near hard boundaries: in the seahorse valley
+  at W = 64, about 13 to 38 % of the counts differ from the wider reference even at 65536 ulps per
+  pixel; at W = 128, 1 to 5 % at the deepest level; elsewhere almost none. The viewer's limit of 16
+  ulps per pixel stays; noise at the deepest levels is the honest result of the format.
+- Step 2 and 3 done in simulation: `WideSquare` (`WideSquareSim`, 64/96/128) and `WideIteration` in
+  `SlotCore` (`AccelWideSim`: the whole accelerator at W = 64 and 128, record for record against
+  the model). |z|² goes as 48-bit fixed point (29 fraction bits) to the f32 converter. A new
+  register R2 (0x0A0) gives the bailout radius squared.
+- Step 4: `mandelbrotd` takes coordinates up to 128 bits and reads R2; `accel_test.py` and
+  `test_board.py` use `fixed.py` for wide designs.
+- Step 5: `make hps WIDTH=64` (or 96, 128; 21 is the default) picks the core count from the DSP
+  budget and keeps a copy of each width's bitstream; `make program-hps WIDTH=64` loads it.
+  - **W = 64 works on the board:** 12 cores at 198 MHz (setup slack +0.004 ns), 58 % of the ALMs,
+    180 DSP multipliers. `accel_test.py check` and all of `test_board.py` pass bit for bit against
+    `fixed.py`. 2.26 G iterations/s at max_it 4096 (95 % of 12 x 198 M), 1.34 G at max_it 256. The
+    viewer goes to level 192 (7.3e-12 per pixel at level 140, 3.4e10 magnification).
+- Step 6: `pc/bench` (C++, OpenMP, all 24 threads of a Ryzen 9 9900X), 256x256 tiles of the whole
+  set at max_it 4096: double (AVX-512) 11.2 G iterations/s, 64-bit fixed point 1.1 G, 128-bit fixed
+  point 0.2 G. For comparison, the 21-bit FPGA design does 9.3 G, and W = 64 2.26 G: twice the
+  CPU in the same format, and a fifth of the CPU in double, which only reaches about 1e-13 per pixel.
 
 ### Phase 3: algorithmic speedups
 

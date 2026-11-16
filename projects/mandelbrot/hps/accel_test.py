@@ -4,7 +4,9 @@
     sudo python3 accel_test.py check      tiles of several kinds, every record checked
     sudo python3 accel_test.py bench      256x256 tiles, all result slots busy: tiles/s, pixels/s
 
-The model below is bit-exact with the hardware (spinal/src/test/scala/mandelbrot/AccelModel.scala).
+The models are bit-exact with the hardware: the narrow one below for the 21-bit phase 1 cores
+(spinal/src/test/scala/mandelbrot/AccelModel.scala), fixed.py (copied next to this script by
+`make install`) for the wide cores of phase 2.
 Registers are accessed as 32-bit words through ctypes and results as 64-bit words: the mappings
 are device memory, where unaligned or byte accesses fault or read wrong.
 """
@@ -22,7 +24,7 @@ SLOTS = 8
 ID, VERSION, CAPS, ARITH_ID, CONTROL, STATUS, ABORT, QUEUE = range(0, 0x20, 4)
 X0, Y0, STEP, SIZE, MAX_IT, FLAGS, JOB_ID = 0x20, 0x30, 0x40, 0x50, 0x54, 0x58, 0x5C
 RESULT_BASE, RESULT_SLOTS, RESULT_SLOT, DONE, DONE_ITERATIONS = 0x60, 0x68, 0x6C, 0x70, 0x74
-TOTAL_ITERATIONS, TOTAL_CYCLES, TOTAL_PIXELS, BOARD_TEMP, FAN_RPM = 0x80, 0x88, 0x90, 0x98, 0x9C
+TOTAL_ITERATIONS, TOTAL_CYCLES, TOTAL_PIXELS, BOARD_TEMP, FAN_RPM, R2 = 0x80, 0x88, 0x90, 0x98, 0x9C, 0xA0
 UNRESOLVED = 0xFFFFFFFF
 MAG_FRAC = 22
 
@@ -39,6 +41,8 @@ class Accel:
         caps = self.rd(CAPS)
         self.n_cores, self.w, self.i_bits, self.n_ctx = caps & 0xFF, (caps >> 8) & 0xFF, (caps >> 16) & 0x1F, caps >> 24
         self.f = self.w - self.i_bits
+        self.wide = self.w > 32
+        self.words = (self.w + 31) // 32
         self.wr(RESULT_BASE, RES_BASE)
         self.wr(RESULT_BASE + 4, 0)
         self.wr(RESULT_SLOTS, SLOTS)
@@ -56,9 +60,9 @@ class Accel:
         return round(v * (1 << self.f))
 
     def push(self, job_id, slot, x0, y0, step, width, height, max_it):
-        mask = (1 << self.w) - 1
-        for reg, v in ((X0, x0), (Y0, y0), (STEP, step)):
-            self.wr(reg, v & mask)
+        for reg, v in ((X0, x0), (Y0, y0), (STEP, step)):  # sign-extended words, low first
+            for k in range(self.words):
+                self.wr(reg + 4 * k, (v >> (32 * k)) & 0xFFFFFFFF)
         self.wr(SIZE, (height << 16) | width)
         self.wr(MAX_IT, max_it)
         self.wr(JOB_ID, job_id)
@@ -103,6 +107,16 @@ def model_record(w, f, cx, cy, max_it):
     return UNRESOLVED
 
 
+def model(acc):
+    """record(cx, cy, max_it) for this accelerator's arithmetic."""
+    if acc.wide:
+        from fixed import WideFormat
+
+        fm = WideFormat(acc.w, acc.i_bits)
+        return fm.record
+    return lambda cx, cy, max_it: model_record(acc.w, acc.f, cx, cy, max_it)
+
+
 def run_job(acc, job_id, slot, x0, y0, step, width, height, max_it, timeout=10.0):
     acc.push(job_id, slot, x0, y0, step, width, height, max_it)
     t = time.monotonic()
@@ -114,18 +128,25 @@ def run_job(acc, job_id, slot, x0, y0, step, width, height, max_it, timeout=10.0
 
 
 def check(acc):
-    print(f"accelerator: {acc.n_cores} cores, W = {acc.w}, I = {acc.i_bits}, {acc.n_ctx} contexts, "
-          f"arith id {acc.rd(ARITH_ID):#010x}")
+    print(f"accelerator: {acc.n_cores} cores, W = {acc.w}, I = {acc.i_bits}, R^2 = {acc.rd(R2) or 4}, "
+          f"{acc.n_ctx} contexts, arith id {acc.rd(ARITH_ID):#010x}")
     fx = acc.fix
+    record = model(acc)
     tiles = [  # name, x0, y0, step, width, height, max_it
         ("whole set", fx(-2.0), fx(1.25), fx(2.5 / 64), 96, 64, 200),
         ("boundary, deep", fx(-0.7454), fx(0.1130), fx(0.00002), 32, 32, 3000),
         ("far outside", fx(-15.9), fx(15.9), fx(1.0), 32, 32, 50),
+        ("very far", fx(-500), fx(500), fx(31), 32, 32, 20),
         ("max_it 0", fx(-0.5), fx(0.5), fx(0.1), 8, 8, 0),
         ("one pixel", fx(0.25), 0, 1, 1, 1, 5000),
         ("256 wide", fx(-2.0), fx(0.01), fx(2.5 / 256), 256, 2, 100),
     ]
     failed = 0
+    if acc.wide:  # the wide model is slow in Python: smaller tiles, fewer iterations
+        tiles = [(n, x0, y0, s, min(wd, 24), min(ht, 16), min(mi, 500)) for n, x0, y0, s, wd, ht, mi in tiles]
+        tiles.append(("deepest level", fx(-0.743643887037151), fx(0.131825904205330), 16, 16, 8, 500))
+    else:
+        tiles = [t for t in tiles if t[0] != "very far"]  # outside the narrow format
     for job_id, (name, x0, y0, step, wd, ht, max_it) in enumerate(tiles, start=1):
         slot = job_id % SLOTS
         _, status, it = run_job(acc, job_id, slot, x0, y0, step, wd, ht, max_it)
@@ -135,7 +156,7 @@ def check(acc):
         for i, r in enumerate(got):
             cx = wrap(x0 + (i % wd) * step, acc.w)
             cy = wrap(y0 - (i // wd) * step, acc.w)
-            want = model_record(acc.w, acc.f, cx, cy, max_it)
+            want = record(cx, cy, max_it)
             want_it += max_it if want == UNRESOLVED else want & 0xFFFFFFFF
             if r != want:
                 if bad < 3:

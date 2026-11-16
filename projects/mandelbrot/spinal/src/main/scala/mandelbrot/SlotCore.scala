@@ -5,20 +5,25 @@ import fpgalib._
 import spinal.core._
 import spinal.lib._
 
-/** Configuration of MandelbrotAccel and its cores (ROADMAP.md, phase 1).
+/** Configuration of MandelbrotAccel and its cores (ROADMAP.md, phases 1 and 2).
   *
   * Coordinates are signed fixed point with `intBits` integer bits (sign included) and `fracWidth`
-  * fraction bits. The bailout is |z|² >= 4. With 5 integer bits, z_n = z_(n-1)² + c can't overflow
-  * before the bailout is seen: |c| < 2 gives |z_n| < 6, and any other c escapes at n = 1.
+  * fraction bits.
+  *  - Narrow (phase 1, `wide = false`): EscapeIteration, bailout |z|² >= 4. With 5 integer bits,
+  *    z_n = z_(n-1)² + c can't overflow before the bailout is seen: |c| < 2 gives |z_n| < 6, and any
+  *    other c escapes at n = 1.
+  *  - Wide (phase 2, `wide = true`): WideIteration (Wide.scala), I = 10, bailout |z|² >= 256; the
+  *    pipeline depth follows from the width.
   */
 case class AccelConfig(
     nCores: Int = 60,
     intBits: Int = 5,
     fracWidth: Int = 16,
-    siLatency: Int = 8, // pipeline depth of one iteration = pixels in flight per core
+    siLatency: Int = 8, // narrow: pipeline depth of one iteration = pixels in flight per core
     nCtx: Int = 8, // jobs held by the accelerator, queued or running (the job queue)
     doneDepth: Int = 16,
-    treeFanIn: Int = 4 // fan-out / fan-in of the pixel and result trees
+    treeFanIn: Int = 4, // fan-out / fan-in of the pixel and result trees
+    wide: Boolean = false
 ) {
   require(intBits >= 5, "fewer than 5 integer bits overflow before the bailout")
   require(siLatency >= 4 && nCtx >= 1 && isPow2(nCtx) && nCores >= 1)
@@ -28,8 +33,32 @@ case class AccelConfig(
   val tagBits  = ctxBits + idxBits
   val slotSize = 512 << 10 // bytes per result slot: 256 x 256 records of 8 bytes
 
-  /** |z|² is reported as unsigned fixed point with 22 fraction bits (at most 512, so 32 bits). */
-  val magFrac = 22
+  lazy val wideParams: WideParams = WideParams(w, intBits)
+  if (wide) require(intBits == 10, "the wide format has I = 10 (R = 16)")
+
+  /** Pipeline depth of one iteration, which is also the number of pixels in flight in a core. */
+  val latency: Int = if (wide) WideIteration.latency(wideParams) else siLatency
+
+  /** Bailout radius squared. */
+  val r2: Int = if (wide) wideParams.r2 else 4
+
+  /** |z|² at escape as unsigned fixed point: narrow 22 fraction bits in 32 (|z|² < 512), wide
+    * 29 fraction bits in 48 (|z|² < 2^19). Enough for the 24 significant bits of an f32. */
+  val magFrac: Int = if (wide) wideParams.magFrac else 22
+  val magBits: Int = if (wide) wideParams.magBits else 32
+}
+
+/** The interface of an iteration unit: z = (sA, sB) and c = (sC, sD) in, `latency` cycles later
+  * z' = z² + c out, with |z|² of the INPUT z and whether it reached the bailout. */
+case class IterationIo(cfg: AccelConfig) extends Bundle {
+  val sA, sB, sC, sD = in SInt (cfg.w bits)
+  val mA, mB         = out SInt (cfg.w bits)
+  val mStop          = out Bool ()
+  val mMag           = out UInt (cfg.magBits bits) // cfg.magFrac fraction bits
+}
+
+abstract class IterationUnit(cfg: AccelConfig) extends Component {
+  val io = IterationIo(cfg)
 }
 
 /** A pixel on its way into a core. */
@@ -43,27 +72,20 @@ case class CorePixel(cfg: AccelConfig) extends Bundle {
 case class CoreResult(cfg: AccelConfig) extends Bundle {
   val tag     = Bits(cfg.tagBits bits)
   val count   = UInt(32 bits) // n of the z_n that escaped, or MAX_IT when none did
-  val mag     = UInt(32 bits) // |z_n|² at escape (cfg.magFrac fraction bits), else 0
+  val mag     = UInt(cfg.magBits bits) // |z_n|² at escape (cfg.magFrac fraction bits), else 0
   val escaped = Bool()
   val dropped = Bool() // the job was aborted: no result
   def ctx     = tag(cfg.tagBits - 1 downto cfg.idxBits).asUInt
   def idx     = tag(cfg.idxBits - 1 downto 0).asUInt
 }
 
-/** One iteration z' = z² + c, fully pipelined, `siLatency` cycles. Also reports |z|² of the INPUT z
-  * and whether it reached the bailout.
+/** The narrow iteration (phase 1): z' = z² + c with signed products, fully pipelined, `siLatency`
+  * cycles. Also reports |z|² of the INPUT z and whether it reached the bailout of 4.
   */
-class EscapeIteration(cfg: AccelConfig) extends Component {
+class EscapeIteration(cfg: AccelConfig) extends IterationUnit(cfg) {
   import cfg._
   val mulLatency = siLatency - 2
   val f          = fracWidth
-
-  val io = new Bundle {
-    val sA, sB, sC, sD = in SInt (w bits)
-    val mA, mB         = out SInt (w bits)
-    val mStop          = out Bool ()
-    val mMag           = out UInt (32 bits)
-  }
 
   private def mul(name: String, x: SInt, y: SInt): SInt = {
     val m = new MulPipe(w, mulLatency, signed = true).setName(name)
@@ -88,14 +110,14 @@ class EscapeIteration(cfg: AccelConfig) extends Component {
   io.mB    := RegNext(abTimes2(f + w - 1 downto f) + d)
   io.mStop := RegNext(sum(2 * w downto 2 * f + 2).orR) // >= 4
   val magFixed = if (2 * f >= magFrac) sum >> (2 * f - magFrac) else sum << (magFrac - 2 * f)
-  io.mMag := RegNext(magFixed.resize(32 bits))
+  io.mMag := RegNext(magFixed.resize(magBits bits))
 }
 
-/** Iterates up to `siLatency` pixels at once through one EscapeIteration pipeline. Every pipeline
+/** Iterates up to `latency` pixels at once through one iteration pipeline (narrow or wide). Every pipeline
   * slot works on its own pixel: when a pixel finishes, its slot hands over the result and takes the
   * next pixel in the same cycle, whatever the other slots are doing.
   *
-  * A pixel's count is the smallest n >= 1 with |z_n|² >= 4 (z_0 = 0, z_n = z_(n-1)² + c). If there
+  * A pixel's count is the smallest n >= 1 with |z_n|² >= R² (z_0 = 0, z_n = z_(n-1)² + c). If there
   * is none up to the job's MAX_IT, the pixel is reported as not escaped. A pixel uses the pipeline
   * count + 1 times, because the bailout of z_n is seen one pass later.
   *
@@ -104,7 +126,7 @@ class EscapeIteration(cfg: AccelConfig) extends Component {
   */
 class SlotCore(cfg: AccelConfig) extends Component {
   import cfg._
-  val n = siLatency
+  val n = latency
 
   val io = new Bundle {
     val maxIt     = in Vec (UInt(32 bits), nCtx)
@@ -114,7 +136,7 @@ class SlotCore(cfg: AccelConfig) extends Component {
     val iterating = out Bool () // this cycle starts a real iteration (for the statistics)
   }
 
-  val it = new EscapeIteration(cfg)
+  val it: IterationUnit = if (wide) new WideIteration(cfg) else new EscapeIteration(cfg)
 
   private def lutram[T <: Data](t: HardType[T]): Mem[T] = {
     val m = Mem(t, n)
@@ -125,7 +147,7 @@ class SlotCore(cfg: AccelConfig) extends Component {
   val tagMem     = lutram(Bits(tagBits bits))
   val jMem       = lutram(UInt(32 bits)) // n of the z_n whose bailout is at the pipeline output
   val limMem     = lutram(Bool()) // j has reached MAX_IT
-  val magMem     = lutram(UInt(32 bits)) // result of a slot that waits for the output
+  val magMem     = lutram(UInt(magBits bits)) // result of a slot that waits for the output
   val escMem     = lutram(Bool())
 
   val busy, waiting = Reg(Bits(n bits)) init (0)

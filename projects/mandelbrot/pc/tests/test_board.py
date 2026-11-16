@@ -2,8 +2,9 @@
 
     MANDELBROT_BOARD=192.168.10.10 uv run pytest -q tests/test_board.py -s
 
-Tiles are compared bit for bit with an exact integer model of the accelerator
-(spinal/src/test/scala/mandelbrot/AccelModel.scala).
+Tiles are compared bit for bit with an exact integer model of the accelerator: the narrow one below
+for the 21-bit phase 1 design (spinal/src/test/scala/mandelbrot/AccelModel.scala), mandelbrot/fixed.py
+for the wide cores of phase 2 (W = 64, 96, 128).
 """
 
 import os
@@ -13,12 +14,24 @@ import numpy as np
 import pytest
 
 from mandelbrot import protocol as p
+from mandelbrot.fixed import WideFormat
 from mandelbrot.net import Connection, ErrorResult, TileResult
 
 HOST = os.environ.get("MANDELBROT_BOARD")
 pytestmark = pytest.mark.skipif(not HOST, reason="set MANDELBROT_BOARD to the board's address")
 
 MAG_FRAC = 22  # fraction bits of the |z|^2 the hardware converts to f32
+
+
+def wide_tile(w, x0, y0, step, width, height, max_it):
+    """The wide model (fixed.py), pixel by pixel: slow, so keep the tiles small."""
+    fm = WideFormat(w)
+    counts = np.empty(width * height, np.uint32)
+    zz = np.empty(width * height, np.uint32)
+    for k in range(width * height):
+        n, mag = fm.pixel(x0 + (k % width) * step, y0 - (k // width) * step, max_it)
+        counts[k], zz[k] = n, fm.mag_to_f32_bits(mag)
+    return counts.reshape(height, width), zz.view(np.float32).reshape(height, width)
 
 
 def exact_tile(w, f, x0, y0, step, width, height, max_it):
@@ -61,7 +74,9 @@ def get(conn, timeout=10.0):
 
 def test_info(conn):
     info = conn.info
-    assert (info.version, info.w, info.f, info.bailout_r2, info.max_in_flight) == (1, 21, 16, 4, 8)
+    formats = {21: (16, 4), 64: (54, 256), 96: (86, 256), 128: (118, 256)}  # W -> F, R^2
+    assert (info.version, info.max_in_flight) == (1, 8)
+    assert formats[info.w] == (info.f, info.bailout_r2)
     assert info.features == p.FEATURE_BOARD_STATUS
     assert 150_000 < info.clock_khz < 250_000
     print(f"\nINFO: {info}")
@@ -75,12 +90,17 @@ def test_info(conn):
     ("full tile", -1.0, 0.5, 1 / 256, 256, 256, 64),
 ])
 def test_tile_is_exact(conn, name, re0, im0, pitch, width, height, max_it):
-    f = conn.info.f
+    w, f = conn.info.w, conn.info.f
+    if w > 21:  # the wide model is pure Python: smaller tiles, fewer iterations
+        width, height, max_it = min(width, 40), min(height, 24), min(max_it, 600)
     x0, y0, step = round(re0 * 2**f), round(im0 * 2**f), max(1, round(pitch * 2**f))
     rid = conn.request(x0, y0, step, max_it, width, height)
-    r = get(conn)
+    r = get(conn, 60)
     assert isinstance(r, TileResult) and r.request_id == rid and r.complete
-    counts, zz = exact_tile(conn.info.w, f, x0, y0, step, width, height, max_it)
+    if w > 21:
+        counts, zz = wide_tile(w, x0, y0, step, width, height, max_it)
+    else:
+        counts, zz = exact_tile(w, f, x0, y0, step, width, height, max_it)
     assert np.array_equal(r.counts, counts), f"{(r.counts != counts).sum()} counts differ"
     assert np.array_equal(r.zz.view(np.uint32), zz.view(np.uint32)), f"{(r.zz != zz).sum()} |z|^2 differ"
     want_it = int(np.where(counts == p.UNRESOLVED, max_it, counts).sum(dtype=np.int64))
@@ -93,7 +113,7 @@ def test_errors(conn):
         (dict(x0=0, y0=0, step=1, max_it=10, width=257, height=1), p.Err.TILE_SIZE),
         (dict(x0=0, y0=0, step=1, max_it=0, width=4, height=4), p.Err.MAX_IT),
         (dict(x0=0, y0=0, step=1, max_it=10, width=4, height=4, flags=p.FLAG_LZ4), p.Err.FLAGS),
-        (dict(x0=(1 << 20) - 2, y0=0, step=1, max_it=10, width=4, height=1), p.Err.COORDINATE),
+        (dict(x0=(1 << (conn.info.w - 1)) - 2, y0=0, step=1, max_it=10, width=4, height=1), p.Err.COORDINATE),
         (dict(x0=0, y0=0, step=0, max_it=10, width=4, height=1), p.Err.COORDINATE),
     ]
     for kw, code in cases:

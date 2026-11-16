@@ -14,7 +14,7 @@ all: $(PROGS)
 mandelbrotd: mandelbrotd.c protocol.h
 
 install: $(PROGS)
-	scp $(PROGS) accel_test.py $(BOARD):
+	scp $(PROGS) accel_test.py ../pc/mandelbrot/fixed.py $(BOARD):
 
 clean:
 	rm -f $(PROGS)

@@ -8,7 +8,11 @@
 #
 # HPS design (De25NanoHpsTop, ROADMAP.md phase 1), in build_hps/:
 #   make hps           compile -> build_hps/output_files/mandelbrot_hps_spl.sof (with the HPS boot loader)
-#   make program-hps   load it over JTAG. This restarts the HPS, so Linux reboots.
+#                      and a copy named after the width, mandelbrot_hps_w$(WIDTH)_spl.sof
+#   make program-hps   load it over JTAG (WIDTH picks a kept copy). This restarts the HPS, so Linux
+#                      reboots.
+#   WIDTH=21 (default) the phase 1 cores; WIDTH=64, 96 or 128 the wide cores (phase 2). HPS_NCORES
+#   overrides the core count (default: 60 narrow, or what the DSP blocks allow for wide cores).
 #
 # Options (make VAR=value): CORE_MHZ, NCORES, FRAC_WIDTH, SI_LATENCY, DE25_DIR
 
@@ -28,7 +32,7 @@ SPINAL     := ../spinal
 LPDDR4_DEMO = $(DE25_DIR)/Demonstration/FPGA/RTL_LPDDR4_AXI4_Test
 SPINAL_SRC := $(wildcard $(SPINAL)/src/main/scala/mandelbrot/*.scala ../../../spinal/src/main/scala/fpgalib/*.scala)
 
-.PHONY: all verilog project compile program clean hps program-hps
+.PHONY: all verilog project compile program clean hps program-hps FORCE
 
 all: compile
 
@@ -84,10 +88,19 @@ BUILD_HPS  := build_hps
 GHRD        = $(DE25_DIR)/Demonstration/SoC_FPGA/GHRD
 BOARD_INFO  = $(DE25_DIR)/Demonstration/FPGA/Board_Info_RTL
 
-$(BUILD_HPS)/sp_De25NanoHpsTop.v: $(SPINAL_SRC) Makefile
+WIDTH      ?= 21
+HPS_NCORES ?=
+HPS_GEN_ARGS = width=$(WIDTH) $(if $(HPS_NCORES),nCores=$(HPS_NCORES)) \
+    $(if $(filter 21,$(WIDTH)),fracWidth=$(FRAC_WIDTH) siLatency=$(SI_LATENCY))
+
+# Regenerated when the sources or the options change.
+$(BUILD_HPS)/gen_args: FORCE
+	@mkdir -p $(BUILD_HPS)
+	@echo '$(HPS_GEN_ARGS)' | cmp -s - $@ || echo '$(HPS_GEN_ARGS)' > $@
+
+$(BUILD_HPS)/sp_De25NanoHpsTop.v: $(SPINAL_SRC) Makefile $(BUILD_HPS)/gen_args
 	mkdir -p $(BUILD_HPS)
-	cd $(SPINAL) && sbt -batch "runMain mandelbrot.GenerateDe25NanoHps targetDir=$(abspath $(BUILD_HPS)) \
-	    nCores=$(NCORES) fracWidth=$(FRAC_WIDTH) siLatency=$(SI_LATENCY)"
+	cd $(SPINAL) && sbt -batch "runMain mandelbrot.GenerateDe25NanoHps targetDir=$(abspath $(BUILD_HPS)) $(HPS_GEN_ARGS)"
 
 # Core clock (outclk_0) from CLOCK1_50.
 $(BUILD_HPS)/core_pll.ip: Makefile
@@ -124,7 +137,11 @@ hps: $(BUILD_HPS)/mandelbrot_hps.qsf $(BUILD_HPS)/sp_De25NanoHpsTop.v
 	cd $(BUILD_HPS) && quartus_sh --flow compile mandelbrot_hps
 	cd $(BUILD_HPS) && quartus_pfg -c output_files/mandelbrot_hps.sof output_files/mandelbrot_hps_spl.sof \
 	    -o hps_path=u-boot-spl-dtb.hex
+	cp $(BUILD_HPS)/output_files/mandelbrot_hps_spl.sof $(BUILD_HPS)/output_files/mandelbrot_hps_w$(WIDTH)_spl.sof
 	@grep -A3 'Worst-case Slack' $(BUILD_HPS)/output_files/mandelbrot_hps.sta.summary 2>/dev/null || true
 
+# The bitstream of WIDTH if one was built (each build keeps a copy), else the latest build.
+HPS_SOF = $(firstword $(wildcard $(BUILD_HPS)/output_files/mandelbrot_hps_w$(WIDTH)_spl.sof) \
+    $(BUILD_HPS)/output_files/mandelbrot_hps_spl.sof)
 program-hps:
-	cd $(BUILD_HPS) && quartus_pgm -m jtag -o "p;output_files/mandelbrot_hps_spl.sof"
+	quartus_pgm -m jtag -o "p;$(HPS_SOF)"

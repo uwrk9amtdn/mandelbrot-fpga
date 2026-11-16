@@ -42,6 +42,7 @@ object AccelRegs {
   val TOTAL_PIXELS     = 0x090
   val BOARD_TEMP       = 0x098 // 15:0 FPGA, 31:16 board, signed °C
   val FAN_RPM          = 0x09C // 15:0 RPM, bit 31 readings valid
+  val R2               = 0x0A0 // the bailout radius squared, an integer
 
   // Bring-up test of f2sdram reads, not part of the register map.
   val TEST_ADDR  = 0xF00 // address of the 32-byte beat (a multiple of 32)
@@ -51,7 +52,10 @@ object AccelRegs {
   /** Identifies everything that changes result bits (PC_APP_PLAN.md, "Arithmetic id"). */
   def arithId(cfg: AccelConfig): Long = {
     val crc = new java.util.zip.CRC32
-    crc.update(s"fpga-slotcore|w=${cfg.w}|i=${cfg.intBits}|f=${cfg.fracWidth}|r2=4|records-v1".getBytes("UTF-8"))
+    val arith =
+      if (cfg.wide) s"fpga-wide|w=${cfg.w}|i=${cfg.intBits}|r2=${cfg.r2}|limb=26|k=${cfg.wideParams.droppedDiagonals}"
+      else s"fpga-slotcore|w=${cfg.w}|i=${cfg.intBits}|f=${cfg.fracWidth}|r2=4"
+    crc.update(s"$arith|records-v1".getBytes("UTF-8"))
     crc.getValue
   }
 }
@@ -319,8 +323,8 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
   case class Normalize() extends Bundle {
     val addr  = UInt(32 bits)
     val count = UInt(32 bits)
-    val mag   = UInt(32 bits)
-    val top   = UInt(5 bits) // index of the highest set bit of mag
+    val mag   = UInt(magBits bits)
+    val top   = UInt(log2Up(magBits) bits) // index of the highest set bit of mag
     val ctx   = UInt(ctxBits bits)
   }
   case class Record() extends Bundle {
@@ -339,15 +343,15 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
   }.m2sPipe()
   val records = normalized.map { r =>
     val o    = Record()
-    val norm = (r.mag << (U(31, 5 bits) - r.top)).resize(32) // highest set bit at 31
-    val exp  = r.top.resize(8) + 105 // top - magFrac + 127
-    val f32  = Mux(r.mag === 0, B(0, 32 bits), B"0" ## exp.asBits ## norm(30 downto 8).asBits)
+    val norm = (r.mag << (U(magBits - 1, r.top.getWidth bits) - r.top)).resize(magBits) // top bit at magBits-1
+    val exp  = r.top.resize(8) + (127 - magFrac) // top - magFrac + 127
+    val f32  = Mux(r.mag === 0, B(0, 32 bits), B"0" ## exp.asBits ## norm(magBits - 2 downto magBits - 24).asBits)
     o.addr := r.addr
     o.data := f32 ## r.count.asBits
     o.ctx  := r.ctx
     o
   }.m2sPipe()
-  require(magFrac == 22)
+  require(magBits >= 24 && magFrac < 127)
 
   val (awRec, wRec) = StreamFork2(records)
   val axi           = io.axi
@@ -419,6 +423,7 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
   }
   f.read(slow(io.board.boardTemp.asBits) ## slow(io.board.fpgaTemp.asBits), BOARD_TEMP)
   f.read(slow(io.board.ready.asBits) ## B(0, 15 bits) ## slow(io.board.fanRpm.asBits), FAN_RPM)
+  f.read(B(r2, 32 bits), R2)
 
   // ---------------------------------------------------------------------------------- f2sdram read test
   val test = new Area {

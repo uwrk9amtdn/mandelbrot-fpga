@@ -51,7 +51,7 @@ enum {
     R_MAX_IT = 0x054, R_FLAGS = 0x058, R_JOB_ID = 0x05C, R_RESULT_BASE = 0x060,
     R_RESULT_SLOTS = 0x068, R_RESULT_SLOT = 0x06C, R_DONE = 0x070, R_DONE_ITERATIONS = 0x074,
     R_TOTAL_ITERATIONS = 0x080, R_TOTAL_CYCLES = 0x088, R_TOTAL_PIXELS = 0x090,
-    R_BOARD_TEMP = 0x098, R_FAN_RPM = 0x09C,
+    R_BOARD_TEMP = 0x098, R_FAN_RPM = 0x09C, R_R2 = 0x0A0,
 };
 #define CTRL_PUSH 1u
 #define CTRL_ABORT_ALL 2u
@@ -191,11 +191,12 @@ static void setup_accel(void) {
 
     uint32_t caps = rd(R_CAPS);
     unsigned w = (caps >> 8) & 0xFF, ibits = (caps >> 16) & 0x1F;
-    if (w > 63) {
-        LOG("W = %u: this version handles at most 63 bits", w);
+    if (w > 128) {
+        LOG("W = %u: at most 128 bits (4 words per coordinate)", w);
         exit(1);
     }
     n_words = (w + 31) / 32;
+    uint32_t r2 = rd(R_R2);
 
     rd(R_TOTAL_ITERATIONS); // latches the totals
     uint64_t c0 = rd64(R_TOTAL_CYCLES);
@@ -209,7 +210,8 @@ static void setup_accel(void) {
         .version = PROTO_VERSION, .w = w, .f = w - ibits, .n_cores = caps & 0xFF,
         .clock_khz = (uint32_t)((c1 - c0) / (t1 - t0) / 1000 + 0.5),
         .max_tile_width = 256, .max_tile_height = 256, .max_in_flight = SLOTS,
-        .features = FEATURE_BOARD_STATUS, .max_max_it = MAX_MAX_IT, .bailout_r2 = 4,
+        .features = FEATURE_BOARD_STATUS, .max_max_it = MAX_MAX_IT,
+        .bailout_r2 = r2 ? r2 : 4, // bitstreams before the R2 register have R^2 = 4
         .arith_id = rd(R_ARITH_ID),
     };
     LOG("accelerator: %u cores at %.1f MHz, W = %u, F = %u, arithmetic id %#010x; buffer at %#llx",
@@ -288,17 +290,31 @@ static int send_tile(int fd, unsigned s, int complete, uint64_t iterations) {
 
 // ------------------------------------------------------------------------------------- requests
 
-static int64_t coord(const uint8_t *p) {
-    uint32_t lo, hi = 0;
-    memcpy(&lo, p, 4);
-    if (n_words == 1) return (int32_t)lo;
-    memcpy(&hi, p + 4, 4);
-    return (int64_t)((uint64_t)hi << 32 | lo);
+typedef __int128 i128;
+
+// A coordinate: n_words u32 words, low first, sign-extended from the top word.
+static i128 coord(const uint8_t *p) {
+    unsigned __int128 u = 0;
+    for (unsigned k = 0; k < n_words; k++) {
+        uint32_t word;
+        memcpy(&word, p + 4 * k, 4);
+        u |= (unsigned __int128)word << (32 * k);
+    }
+    unsigned bits = 32 * n_words;
+    if (bits < 128 && (u >> (bits - 1)) & 1) u |= ~(unsigned __int128)0 << bits;
+    return (i128)u;
 }
 
-static int fits(int64_t v) {
-    int64_t lim = (int64_t)1 << (info.w - 1);
+static int fits(i128 v) {
+    if (info.w >= 128) return 1;
+    i128 lim = (i128)1 << (info.w - 1);
     return v >= -lim && v < lim;
+}
+
+// a + k * step fits the W-bit format, without overflowing 128 bits on the way.
+static int fits_at(i128 a, i128 k, i128 step) {
+    i128 prod, sum;
+    return !__builtin_mul_overflow(k, step, &prod) && !__builtin_add_overflow(a, prod, &sum) && fits(sum);
 }
 
 static int on_tile_req(int fd, const uint8_t *p, uint32_t len) {
@@ -306,7 +322,7 @@ static int on_tile_req(int fd, const uint8_t *p, uint32_t len) {
     size_t cw = 4 * n_words;
     if (len != sizeof q + 3 * cw) return send_error(fd, 0, ERR_MESSAGE, "TILE_REQ of the wrong length");
     memcpy(&q, p, sizeof q);
-    int64_t x0 = coord(p + sizeof q), y0 = coord(p + sizeof q + cw), step = coord(p + sizeof q + 2 * cw);
+    i128 x0 = coord(p + sizeof q), y0 = coord(p + sizeof q + cw), step = coord(p + sizeof q + 2 * cw);
     uint32_t id = q.request_id;
 
     if (id == 0) return send_error(fd, id, ERR_REQUEST_ID, "request id 0");
@@ -315,8 +331,8 @@ static int on_tile_req(int fd, const uint8_t *p, uint32_t len) {
     if (q.max_it < 1 || q.max_it > MAX_MAX_IT) return send_error(fd, id, ERR_MAX_IT, "max_it out of range");
     if (q.flags & ~(info.features & REQUEST_FLAGS))
         return send_error(fd, id, ERR_FLAGS, "flags not supported");
-    if (!(step > 0 && fits(x0) && fits(y0) && fits(x0 + (int64_t)(q.width - 1) * step) &&
-          fits(y0 - (int64_t)(q.height - 1) * step)))
+    if (!(step > 0 && fits(x0) && fits(y0) && fits(step) && fits_at(x0, q.width - 1, step) &&
+          fits_at(y0, -(i128)(q.height - 1), step)))
         return send_error(fd, id, ERR_COORDINATE, "the tile doesn't fit the W-bit format");
     for (unsigned s = 0; s < SLOTS; s++)
         if (slots[s].used && slots[s].request_id == id)

@@ -69,7 +69,10 @@ class AccelWideSim extends AnyFunSuite {
         Job(2, 1, fix(-0.743643887037151), fix(0.131825904205330), 16, 6, 5, 400), // deepest level
         Job(3, 2, fix(-500.0), fix(500.0), fix(97.0), 11, 11, 20), // far outside: large |z|^2
         Job(4, 3, fix(-1.5), fix(0.02), fix(0.01), 7, 3, 1), // max_it 1
-        Job(5, 4, fix(-1.4), fix(0.8), fix(0.1), 20, 17, 60, FLAG_CARDIOID) // cardioid, bulb, outside
+        Job(5, 4, fix(-1.4), fix(0.8), fix(0.1), 20, 17, 60, FLAG_CARDIOID), // cardioid, bulb, outside
+        Job(6, 5, fix(-1.4), fix(0.8), fix(0.1), 20, 17, 400, FLAG_PERIODICITY | FLAG_CARDIOID),
+        Job(7, 6, fix(-0.7436), fix(0.1318), fix(0.002), 6, 5, 1500, FLAG_PERIODICITY), // seahorse valley
+        Job(8, 7, fix(-0.16), fix(0.80), fix(0.012), 8, 8, 600, FLAG_PERIODICITY) // period-3 bulb
       )
       // more jobs than contexts: a push with no free context is ignored, so push only when QUEUE
       // shows one (as mandelbrotd does), and drain DONE meanwhile
@@ -95,6 +98,7 @@ class AccelWideSim extends AnyFunSuite {
           cycles += 50
         }
       }
+      var byPeriod = 0
       for (j <- jobs) {
         assert(done(j.id) == 0, s"job ${j.id} status")
         for (row <- 0 until j.height; col <- 0 until j.width) {
@@ -104,14 +108,18 @@ class AccelWideSim extends AnyFunSuite {
           val want =
             if ((j.flags & FLAG_CARDIOID) != 0 && CardioidCheck.inside(cx, cy, p.f)) BigInt(AccelModel.Interior)
             else {
-              val (count, mag) = WideModel.pixel(p, cx, cy, j.maxIt)
-              (BigInt(WideModel.magToF32Bits(p, mag)) << 32) | count
+              val (count, mag) = WideModel.pixel(p, cx, cy, j.maxIt, (j.flags & FLAG_PERIODICITY) != 0)
+              if (count == WideModel.Interior) (mag << 32) | count
+              else (BigInt(WideModel.magToF32Bits(p, mag)) << 32) | count
             }
           val addr = base + j.slot * cfg.slotSize + 8L * i
           val got  = (0 until 8).map(b => BigInt(mem.memory.read(addr + b) & 0xFF) << (8 * b)).sum
           assert(got == want, f"job ${j.id} pixel $i: got $got%016x, want $want%016x")
+          if ((want & 0xFFFFFFFFL) == AccelModel.Interior && (want >> 32) > 0) byPeriod += 1
         }
       }
+      assert(byPeriod >= 20, s"only $byPeriod pixels proven by period")
+      println(s"W = $w: $byPeriod pixels proven by period")
     }
   }
 }

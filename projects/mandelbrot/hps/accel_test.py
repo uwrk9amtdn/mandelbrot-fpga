@@ -27,7 +27,8 @@ RESULT_BASE, RESULT_SLOTS, RESULT_SLOT, DONE, DONE_ITERATIONS = 0x60, 0x68, 0x6C
 TOTAL_ITERATIONS, TOTAL_CYCLES, TOTAL_PIXELS, BOARD_TEMP, FAN_RPM, R2 = 0x80, 0x88, 0x90, 0x98, 0x9C, 0xA0
 UNRESOLVED = 0xFFFFFFFF
 INTERIOR = 0xFFFFFFFE
-CARDIOID = 1 << 1  # FLAGS
+PERIODICITY = 1 << 0  # FLAGS
+CARDIOID = 1 << 1
 MAG_FRAC = 22
 
 
@@ -95,10 +96,17 @@ def wrap(v, bits):
     return v - (1 << bits) if v >> (bits - 1) else v
 
 
-def model_record(w, f, cx, cy, max_it):
-    a = b = 0
+def model_record(w, f, cx, cy, max_it, periodicity=False):
+    from fixed import period_refresh
+
+    a = b = sa = sb = 0
     for n in range(1, max_it + 1):
         a, b = wrap(((a * a - b * b) >> f) + cx, w), wrap(((a * b * 2) >> f) + cy, w)
+        if periodicity:  # as fixed.WideFormat.pixel
+            if a == sa and b == sb:
+                return (n << 32) | INTERIOR
+            if period_refresh(n):
+                sa, sb = a, b
         s = a * a + b * b
         if s >> (2 * f + 2):
             mag = (s >> (2 * f - MAG_FRAC)) if 2 * f >= MAG_FRAC else (s << (MAG_FRAC - 2 * f))
@@ -112,7 +120,7 @@ def model_record(w, f, cx, cy, max_it):
 
 def model(acc):
     """record(cx, cy, max_it, flags) for this accelerator's arithmetic."""
-    from fixed import FLAG_CARDIOID, INTERIOR, WideFormat, cardioid_bulb
+    from fixed import FLAG_CARDIOID, FLAG_PERIODICITY, WideFormat, cardioid_bulb
 
     if acc.wide:
         return WideFormat(acc.w, acc.i_bits).record
@@ -120,7 +128,7 @@ def model(acc):
     def record(cx, cy, max_it, flags=0):
         if flags & FLAG_CARDIOID and cardioid_bulb(cx, cy, acc.f):
             return INTERIOR
-        return model_record(acc.w, acc.f, cx, cy, max_it)
+        return model_record(acc.w, acc.f, cx, cy, max_it, bool(flags & FLAG_PERIODICITY))
     return record
 
 
@@ -149,6 +157,9 @@ def check(acc):
         ("256 wide", fx(-2.0), fx(0.01), fx(2.5 / 256), 256, 2, 100),
         ("cardioid test", fx(-1.4), fx(0.8), fx(0.1), 20, 17, 300, CARDIOID),
         ("cardioid edge", fx(0.2499), fx(0.5001), fx(0.000004), 64, 64, 1000, CARDIOID),
+        ("period, seahorse", fx(-0.76), fx(0.14), fx(0.004), 16, 12, 2000, PERIODICITY),
+        ("period, bulb 3", fx(-0.16), fx(0.80), fx(0.012), 8, 8, 600, PERIODICITY),
+        ("period + cardioid", fx(-1.4), fx(0.8), fx(0.1), 20, 17, 400, PERIODICITY | CARDIOID),
     ]
     tiles = [t if len(t) == 8 else t + (0,) for t in tiles]
     failed = 0
@@ -167,7 +178,8 @@ def check(acc):
             cx = wrap(x0 + (i % wd) * step, acc.w)
             cy = wrap(y0 - (i // wd) * step, acc.w)
             want = record(cx, cy, max_it, flags)
-            want_it += max_it if want == UNRESOLVED else 0 if want == INTERIOR else want & 0xFFFFFFFF
+            low = want & 0xFFFFFFFF  # a proven pixel counts its proof iteration (0 for the cardioid)
+            want_it += max_it if low == UNRESOLVED else want >> 32 if low == INTERIOR else low
             if r != want:
                 if bad < 3:
                     print(f"  pixel {i} ({i % wd}, {i // wd}): got {r:#018x}, want {want:#018x}")

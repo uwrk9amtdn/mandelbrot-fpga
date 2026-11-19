@@ -7,8 +7,9 @@ import spinal.core.sim._
 import scala.collection.mutable
 import scala.util.Random
 
-/** SlotCore against AccelModel: random pixels from two job contexts with different MAX_IT, random
-  * gaps at the input and random back-pressure at the output, then an abort.
+/** SlotCore against AccelModel: random pixels from four job contexts with different MAX_IT (context
+  * 0 with the periodicity check), random gaps at the input and random back-pressure at the output,
+  * then an abort.
   */
 class SlotCoreSim extends AnyFunSuite {
   val cfg = AccelConfig(nCores = 1, fracWidth = 12, siLatency = 6, nCtx = 4)
@@ -17,9 +18,10 @@ class SlotCoreSim extends AnyFunSuite {
     MandelbrotSpinalConfig.sim.workspaceName("SlotCore").compile(new SlotCore(cfg)).doSim(seed = 5) { dut =>
       val cd  = dut.clockDomain
       val rnd = new Random(1)
-      val maxIts = Seq(40L, 7L, 0L, 1L)
+      val maxIts = Seq(300L, 7L, 0L, 1L)
       for (i <- 0 until 4) dut.io.maxIt(i) #= maxIts(i)
       dut.io.abort   #= 0
+      dut.io.periodic #= 1 // context 0
       dut.io.s.valid #= false
       dut.io.m.ready #= false
       cd.forkStimulus(10)
@@ -29,10 +31,13 @@ class SlotCoreSim extends AnyFunSuite {
       case class Px(x: BigInt, y: BigInt, ctx: Int, idx: Int)
       val pixels = (0 until 600).map { i =>
         // mostly near the set, some far outside (escape at n = 1, large |z|²)
-        val r = if (i % 7 == 0) 15.9 else 2.2
-        Px(fix((rnd.nextDouble() * 2 - 1) * r), fix((rnd.nextDouble() * 2 - 1) * r), rnd.nextInt(4), i)
+        val r   = if (i % 7 == 0) 15.9 else 2.2
+        val ctx = rnd.nextInt(4)
+        if (ctx == 0 && i % 7 != 0) // the periodicity check: mostly inside or near the set
+          Px(fix(rnd.nextDouble() * 1.9 - 1.5), fix(rnd.nextDouble() * 2.0 - 1.0), ctx, i)
+        else Px(fix((rnd.nextDouble() * 2 - 1) * r), fix((rnd.nextDouble() * 2 - 1) * r), ctx, i)
       }
-      val expected = pixels.map(p => p.idx -> AccelModel.pixel(cfg, p.x, p.y, maxIts(p.ctx))).toMap
+      val expected = pixels.map(p => p.idx -> AccelModel.pixel(cfg, p.x, p.y, maxIts(p.ctx), p.ctx == 0)).toMap
       val got      = mutable.Map[Int, (Long, Long)]()
       var passes   = 0L
       var aborting = false
@@ -43,8 +48,10 @@ class SlotCoreSim extends AnyFunSuite {
           val idx = (dut.io.m.tag.toLong & 0xFFFF).toInt
           assert(!got.contains(idx), s"pixel $idx came out twice")
           assert(!dut.io.m.dropped.toBoolean)
-          val count = if (dut.io.m.escaped.toBoolean) dut.io.m.count.toLong else AccelModel.Unresolved
-          got(idx) = (count, dut.io.m.mag.toLong)
+          got(idx) =
+            if (dut.io.m.escaped.toBoolean) (dut.io.m.count.toLong, dut.io.m.mag.toLong)
+            else if (dut.io.m.interior.toBoolean) (AccelModel.Interior, dut.io.m.count.toLong) // count: k
+            else (AccelModel.Unresolved, dut.io.m.mag.toLong)
         }
         if (!aborting) dut.io.m.ready #= rnd.nextInt(4) != 0
       }
@@ -58,19 +65,22 @@ class SlotCoreSim extends AnyFunSuite {
         cd.waitSamplingWhere(dut.io.s.ready.toBoolean)
         dut.io.s.valid #= false
       }
-      cd.waitSampling(60 * cfg.siLatency)
+      cd.waitSampling(400 * cfg.siLatency)
       assert(got.size == pixels.size)
       for (p <- pixels) assert(got(p.idx) == expected(p.idx), s"pixel $p")
-      // every pixel uses the pipeline count + 1 times (MAX_IT + 1 when it does not escape)
+      assert(expected.values.count(_._1 == AccelModel.Interior) >= 30)
+      // every pixel uses the pipeline count + 1 times (MAX_IT + 1 when it does not escape, k + 1
+      // when proven at k)
       val want = pixels.map { p =>
-        val c = expected(p.idx)._1
-        (if (c == AccelModel.Unresolved) maxIts(p.ctx) else c) + 1
+        val (c, m) = expected(p.idx)
+        (if (c == AccelModel.Unresolved) maxIts(p.ctx) else if (c == AccelModel.Interior) m else c) + 1
       }.sum
       assert(passes == want)
 
       // abort: pixels of context 0 that would run for a long time come out dropped
       aborting = true
       dut.io.maxIt(0) #= 1000000
+      dut.io.periodic #= 0 // c = 0 would be proven at n = 1
       dut.io.m.ready  #= true
       var dropped = 0
       cd.onSamplings { if (dut.io.m.valid.toBoolean && dut.io.m.dropped.toBoolean) dropped += 1 }

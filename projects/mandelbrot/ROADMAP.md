@@ -254,7 +254,7 @@ Source: <https://en.wikipedia.org/wiki/Plotting_algorithms_for_the_Mandelbrot_se
 | Histogram colouring | PC | 1 | Whole-image pass. Combine with smooth. |
 | HSV/LCH/exponential mapping | PC | 1 | |
 | Cardioid / period-2 bulb test | FPGA pixel issuer | 3 | q = (x−¼)² + y², interior if q(q + x − ¼) ≤ ¼y²; bulb: (x+1)² + y² ≤ 1/16. Computed in low precision (27 bits) with a conservative margin: a wrong "outside" only costs time, never a wrong pixel. Mostly helps shallow views. |
-| Periodicity check | FPGA core | 3 | Per pipeline slot, store z_old (2×W bits, in MLAB/M20K) and compare \|x − x_old\| and \|y − y_old\| < ε. Brent's variant: refresh z_old at powers of 2, not every 20 iterations. Huge gain for interior pixels at high max_it. **Rule:** whether and when a pixel is proven may depend only on c and the iteration number, never on MAX_IT (ε and the refresh schedule don't scale with it), so a run to M' is a run to M stopped early, which the PC's cache relies on. The record carries the iteration of the proof (see "Result per pixel"). |
+| Periodicity check | FPGA core | 3 | Per pipeline slot, store a saved z (2×W bits, in MLABs) and compare z_n with it **bit for bit** (no ε; phase 3 step 2 has the definition and why). Huge gain for interior pixels at high max_it. **Rule:** whether and when a pixel is proven may depend only on c and the iteration number, never on MAX_IT (ε and the refresh schedule don't scale with it), so a run to M' is a run to M stopped early, which the PC's cache relies on. The record carries the iteration of the proof (see "Result per pixel"). |
 | Rectangle checking (Mariani-Silver) | PC | 3 | Compute the border of a rectangle first; if it is all one count, fill the inside, otherwise split into four. A border is four thin tile requests (1 x n and n x 1), batched in one go so the queue stays full. Only regions whose border did not escape are filled: exterior bands aren't flat in smooth colouring (as the article notes), and the colouring can change after the render. The fill value is "proven interior" if the whole border is, otherwise "reached max_it". |
 | Border-first fill in the pixel issuer | not planned (note) | | An alternative to Mariani-Silver on the PC. A flag on a normal tile: the issuer computes the 1020 border pixels of a 256x256 tile first. If none escaped, the job ends as "filled" and nothing else is iterated; otherwise the remaining pixels are issued as usual. While it waits for the border, the cores take the next job's pixels. An all-interior tile costs 1.6 % of its pixels, with no thin requests and no round trips. A partly interior tile gains nothing unless the test is repeated on sub-blocks (for example 64x64). It overlaps with the periodicity check, so look at it again only after measuring that one. |
 | Border tracing | not planned | | Rectangle checking gets most of the benefit and fits the tile/job model. |
@@ -475,6 +475,23 @@ colouring needs the larger bailout radius of the wide format; LZ4, UIO and the f
     < 2^-21.8. `tests/test_fixed.py` checks 40 000 points near both boundaries against the exact
     rational tests.
   - It changes the arithmetic id ("cardioid-g24-v1"), so tiles of earlier builds don't mix with it.
+- **Periodicity check (step 2).** In `SlotCore`, per slot: a saved z (two W-bit lutrams) and a 2W-bit
+  equality compare at the pipeline output, where z_(n) comes out next to the bailout of z_(n-1). The
+  definition, shared by `fixed.py` (`WideFormat.pixel`), `WideModel`/`AccelModel` and the RTL:
+  - The saved z starts as z_0 = 0. For n = 1 .. max_it, if z_(n-1) did not escape and z_n equals the
+    saved z in every bit, the pixel is proven interior with k = n. After the test, z_n is saved when
+    n has at most 3 significant bits (n < 8 or a multiple of 2^(floor(log2 n) - 2): 4 saves per
+    octave; in the RTL `((j ^ (j+1)) << 2 | 3) >= j+1` for n = j + 1).
+  - Exact, not within ε (user's choice, 2026-11-19): the iteration is a deterministic map of the W-bit
+    z, so an exact repeat means the hardware's own orbit cycles and never escapes. A proven pixel is
+    what the plain run gives at any max_it (so the cache's reuse rule holds and nothing is ever
+    wrong). The experiment below found ε up to 2^-30 safe on its sample but couldn't prove it, and
+    a fixed ε is larger than the pixel step of deep views.
+  - Experiment (bit-exact W = 64 model, 800 random max_it pixels of the seahorse view): share of
+    their iterations saved, exact vs ε = 2^-30: Brent (save at powers of 2) 24 % vs 41 % at max_it
+    4096, 61 % vs 75 % at 16384; 4 saves per octave 30 % vs 47 % at 4096; 16 per octave no better.
+    Detection is late because near the boundary the cycles converge slowly; it grows with max_it.
+  - The arithmetic id gains "period-exact-q4-v1".
 - Benchmark views (shallow, a seahorse valley spiral, a deep zoom, an interior-heavy view): record
   iterations/s and frame times before and after each feature.
 
@@ -509,9 +526,27 @@ and `tests/test_board.py` (with two cardioid tiles) match the model bit for bit.
 | deep | 1069 | 1.33 | 2.2 | 2.37 | 100 % | compute | 1.0x (no pixel in the cardioid) |
 | interior | 24.7 | 0.20 | 17.5 | 0.43 | 19 % | transport | 28x |
 
-- The interior view is now transport-bound (LZ4 would help it). The deep view is unchanged: how much
-  of its time is pixels that reach max_it (what the periodicity check, step 2, can save) is still to
-  be measured.
+- The interior view is now transport-bound (LZ4 would help it).
+- Where the iterations go (`bench_views.py --outcomes`, with the cardioid test): pixels that reach
+  max_it, which only the periodicity check can save, take 70 % of the seahorse view's iterations (7.9 %
+  of its pixels, so up to about 3x), 80 % of the interior view's (0.5 %), 43 % of the whole set's, and
+  none of the deep view's (every pixel escapes; only phase 4 speeds that one up).
+
+**Periodicity check on the board (2026-11-19), `--flags 3` (with the cardioid test) vs `--flags 2`.**
+W = 64: 64 % ALMs, 285 of 358 RAM blocks (80 %, from 225), 184 DSP blocks, core clock slack +0.42 ns
+at 198 MHz. The first build missed timing by 0.16 ns (refresh test and compare in the slot's own
+cycle); the check's memories are now written one cycle late and a match finishes the pixel on its
+next pass. `accel_test.py check` and `tests/test_board.py` (three periodicity tiles) match bit for bit.
+
+| view | max_it | it/px, 2 → 3 | wall s, 2 → 3 | speedup | vs no flags |
+|---|---|---|---|---|---|
+| whole set | 256 | 10.5 → 10.0 | 0.22 → 0.18 | transport | 1.3x |
+| seahorse spiral | 4096 | 465 → 353 | 0.63 → 0.48 | 1.3x | 2.8x |
+| seahorse 16k | 16384 | 1391 → 565 | 1.78 → 0.75 | 2.4x | 6.1x (4.58 s) |
+| deep | 10000 | 1069 → 1069 | 1.34 → 1.34 | none | none (every pixel escapes) |
+| interior | 4096 | 24.7 → 14.9 | 0.25 → 0.25 | transport | 22x |
+
+- As the experiment predicted: the gain grows with max_it. The deep view needs phase 4.
 
 - The development PC is remote from the board: Ethernet goes through Tailscale (80 ms round trip,
   34 Mbit/s from the board by iperf3), JTAG and the console through usbip. The viewer gets about

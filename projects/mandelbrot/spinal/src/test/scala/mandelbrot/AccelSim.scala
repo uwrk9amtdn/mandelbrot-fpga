@@ -101,22 +101,41 @@ class AccelSim extends AnyFunSuite {
         Job(17, 6, fix(-2.1), fix(-1.0), fix(0.2), 16, 1, 25),
         Job(18, 7, fix(-1.4), fix(0.8), fix(0.05), 40, 33, 200, FLAG_CARDIOID) // cardioid, bulb, outside
       )
-      var finished = Map[Int, (Int, BigInt)]()
-      for (j <- jobs) {
-        while ((read(QUEUE) & 0xFFFF) == 0) {
+      def runBatch(jobs: Seq[Job]): BigInt = {
+        var finished = Map[Int, (Int, BigInt)]()
+        for (j <- jobs) {
+          while ((read(QUEUE) & 0xFFFF) == 0) {
+            val (id, st, it) = waitDone()
+            finished += id -> (st, it)
+          }
+          push(j)
+        }
+        while (finished.size < jobs.size) {
           val (id, st, it) = waitDone()
           finished += id -> (st, it)
         }
-        push(j)
+        for (j <- jobs) {
+          assert(finished(j.id)._1 == 0, s"job ${j.id} status")
+          check(j, finished(j.id)._2)
+        }
+        finished.values.map(_._2).sum
       }
-      while (finished.size < jobs.size) {
-        val (id, st, it) = waitDone()
-        finished += id -> (st, it)
-      }
-      for (j <- jobs) {
-        assert(finished(j.id)._1 == 0, s"job ${j.id} status")
-        check(j, finished(j.id)._2)
-      }
+      val batchIterations = runBatch(jobs)
+
+      // the periodicity check (proof iterations in the high half), alone and with the cardioid test
+      val both = FLAG_PERIODICITY | FLAG_CARDIOID
+      val periodic = Seq(
+        Job(41, 0, fix(-2.0), fix(1.2), fix(0.15), 21, 16, 300, FLAG_PERIODICITY), // whole set
+        Job(42, 1, fix(-0.76), fix(0.14), fix(0.004), 16, 12, 2000, FLAG_PERIODICITY), // seahorse valley
+        Job(43, 2, fix(-1.4), fix(0.8), fix(0.05), 40, 33, 500, both),
+        Job(44, 3, fix(-0.1), fix(0.1), fix(0.05), 5, 5, 1, FLAG_PERIODICITY), // MAX_IT 1; c = 0 at n = 1
+        Job(45, 4, fix(-0.1), fix(0.1), fix(0.05), 5, 5, 0, FLAG_PERIODICITY), // MAX_IT 0
+        Job(46, 5, fix(-1.3), fix(0.1), fix(0.003), 8, 8, 100000, FLAG_PERIODICITY) // period-2 bulb, long cycles
+      )
+      val periodIterations = runBatch(periodic)
+      val proven = periodic.map(j => AccelModel.tile(cfg, j.x0, j.y0, j.step, j.width, j.height, j.maxIt, j.flags)
+        .count(r => (r & 0xFFFFFFFFL) == AccelModel.Interior && (r >> 32) > 0)).sum
+      assert(proven > 200, s"only $proven pixels proven by period")
       assert((read(STATUS) & 3) == 0)
 
       // a refused job (slot out of range) and a bad size
@@ -165,9 +184,9 @@ class AccelSim extends AnyFunSuite {
       val it0 = read64(TOTAL_ITERATIONS)
       val px  = read64(TOTAL_PIXELS)
       val cy  = read64(TOTAL_CYCLES)
-      val wantPixels = jobs.map(j => j.width * j.height).sum
+      val wantPixels = (jobs ++ periodic).map(j => j.width * j.height).sum
       assert(px >= wantPixels, s"pixels $px")
-      assert(it0 >= finished.values.map(_._2).sum)
+      assert(it0 >= batchIterations + periodIterations)
       assert(cy > 0)
 
       // board status

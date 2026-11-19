@@ -79,15 +79,26 @@ object WideModel {
   }
 
   val Unresolved = 0xFFFFFFFFL
+  val Interior   = 0xFFFFFFFEL
 
-  /** (count, |z_n|^2 at escape in units 2^-F), or (Unresolved, 0). */
-  def pixel(p: WideParams, cx: BigInt, cy: BigInt, maxIt: Long): (Long, BigInt) = {
+  /** The periodicity check saves z_n after testing it when n has at most 3 significant bits
+    * (`period_refresh` in pc/mandelbrot/fixed.py). */
+  def periodRefresh(n: Long): Boolean = ((n & -n) << 3) > n
+
+  /** (count, |z_n|^2 at escape in units 2^-F), or (Unresolved, 0), or with `periodic` (Interior, k):
+    * z_k equals the saved z bit for bit (`pixel` in pc/mandelbrot/fixed.py). */
+  def pixel(p: WideParams, cx: BigInt, cy: BigInt, maxIt: Long, periodic: Boolean = false): (Long, BigInt) = {
     val bail = BigInt(p.r2) << p.f
-    var x, y = BigInt(0)
-    var n    = 0L
+    var x, y   = BigInt(0)
+    var sx, sy = BigInt(0)
+    var n      = 0L
     while (n < maxIt) {
       val (nx, ny, _) = step(p, x, y, cx, cy)
       x = nx; y = ny; n += 1
+      if (periodic) {
+        if (x == sx && y == sy) return (Interior, BigInt(n))
+        if (periodRefresh(n)) { sx = x; sy = y }
+      }
       val mag = square(p, x.abs) + square(p, y.abs)
       if (mag >= bail) return (n, mag)
     }

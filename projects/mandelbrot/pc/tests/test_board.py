@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from mandelbrot import protocol as p
-from mandelbrot.fixed import WideFormat, cardioid_bulb
+from mandelbrot.fixed import WideFormat, cardioid_bulb, period_refresh
 from mandelbrot.net import Connection, ErrorResult, TileResult
 
 HOST = os.environ.get("MANDELBROT_BOARD")
@@ -23,19 +23,20 @@ pytestmark = pytest.mark.skipif(not HOST, reason="set MANDELBROT_BOARD to the bo
 MAG_FRAC = 22  # fraction bits of the |z|^2 the hardware converts to f32
 
 
-def wide_tile(w, x0, y0, step, width, height, max_it):
+def wide_tile(w, x0, y0, step, width, height, max_it, periodicity=False):
     """The wide model (fixed.py), pixel by pixel: slow, so keep the tiles small."""
     fm = WideFormat(w)
     counts = np.empty(width * height, np.uint32)
     zz = np.empty(width * height, np.uint32)
     for k in range(width * height):
-        n, mag = fm.pixel(x0 + (k % width) * step, y0 - (k // width) * step, max_it)
-        counts[k], zz[k] = n, fm.mag_to_f32_bits(mag)
+        n, mag = fm.pixel(x0 + (k % width) * step, y0 - (k // width) * step, max_it, periodicity=periodicity)
+        counts[k], zz[k] = n, mag if n == p.INTERIOR else fm.mag_to_f32_bits(mag)  # proof iteration k
     return counts.reshape(height, width), zz.view(np.float32).reshape(height, width)
 
 
-def exact_tile(w, f, x0, y0, step, width, height, max_it):
-    """Counts and |z|^2 (f32, truncated like the hardware), int64 fixed point."""
+def exact_tile(w, f, x0, y0, step, width, height, max_it, periodicity=False):
+    """Counts and |z|^2 (f32, truncated like the hardware; the proof iteration as u32 for a pixel
+    proven by the periodicity check, as fixed.WideFormat.pixel), int64 fixed point."""
     half, mask = 1 << (w - 1), (1 << w) - 1
     wrap = lambda v: ((v + half) & mask) - half
     cx = (x0 + step * np.arange(width, dtype=np.int64))[None, :].repeat(height, 0).ravel()
@@ -45,10 +46,20 @@ def exact_tile(w, f, x0, y0, step, width, height, max_it):
     idx = np.arange(cx.size)
     a = np.zeros(cx.size, np.int64)
     b = np.zeros(cx.size, np.int64)
+    sa, sb = a.copy(), b.copy()
     for n in range(1, max_it + 1):
         if idx.size == 0:
             break
         a, b = wrap(((a * a - b * b) >> f) + cx), wrap(((a * b * 2) >> f) + cy)
+        if periodicity:
+            hit = (a == sa) & (b == sb)
+            if hit.any():
+                counts[idx[hit]] = p.INTERIOR
+                zz.view(np.uint32)[idx[hit]] = n
+                keep = ~hit
+                idx, cx, cy, a, b, sa, sb = idx[keep], cx[keep], cy[keep], a[keep], b[keep], sa[keep], sb[keep]
+            if period_refresh(n):
+                sa, sb = a.copy(), b.copy()
         s = a * a + b * b
         esc = (s >> (2 * f + 2)) != 0
         if esc.any():
@@ -58,7 +69,7 @@ def exact_tile(w, f, x0, y0, step, width, height, max_it):
             counts[idx[esc]] = n
             zz[idx[esc]] = (((mag >> shift) << shift).astype(np.float64) * 2.0 ** -MAG_FRAC).astype(np.float32)
             keep = ~esc
-            idx, cx, cy, a, b = idx[keep], cx[keep], cy[keep], a[keep], b[keep]
+            idx, cx, cy, a, b, sa, sb = idx[keep], cx[keep], cy[keep], a[keep], b[keep], sa[keep], sb[keep]
     return counts.reshape(height, width), zz.reshape(height, width)
 
 
@@ -84,6 +95,7 @@ def test_info(conn):
 
 
 CARD = p.FLAG_CARDIOID
+PER = p.FLAG_PERIODICITY
 
 
 @pytest.mark.parametrize("name,re0,im0,pitch,width,height,max_it,flags", [
@@ -94,6 +106,9 @@ CARD = p.FLAG_CARDIOID
     ("full tile", -1.0, 0.5, 1 / 256, 256, 256, 64, 0),
     ("cardioid test", -1.4, 0.8, 0.1, 20, 17, 300, CARD),
     ("cardioid edge", 0.2499, 0.5001, 0.000004, 64, 64, 1000, CARD),
+    ("period, seahorse", -0.76, 0.14, 0.004, 16, 12, 2000, PER),
+    ("period, bulb 3", -0.16, 0.80, 0.012, 8, 8, 600, PER),
+    ("period + cardioid", -1.4, 0.8, 0.1, 20, 17, 400, PER | CARD),
 ])
 def test_tile_is_exact(conn, name, re0, im0, pitch, width, height, max_it, flags):
     w, f = conn.info.w, conn.info.f
@@ -106,9 +121,9 @@ def test_tile_is_exact(conn, name, re0, im0, pitch, width, height, max_it, flags
     r = get(conn, 60)
     assert isinstance(r, TileResult) and r.request_id == rid and r.complete
     if w > 21:
-        counts, zz = wide_tile(w, x0, y0, step, width, height, max_it)
+        counts, zz = wide_tile(w, x0, y0, step, width, height, max_it, bool(flags & PER))
     else:
-        counts, zz = exact_tile(w, f, x0, y0, step, width, height, max_it)
+        counts, zz = exact_tile(w, f, x0, y0, step, width, height, max_it, bool(flags & PER))
     if flags & CARD:
         inside = np.array([[cardioid_bulb(x0 + i * step, y0 - j * step, f) for i in range(width)]
                            for j in range(height)])
@@ -116,7 +131,10 @@ def test_tile_is_exact(conn, name, re0, im0, pitch, width, height, max_it, flags
         assert inside.any() and not inside.all()
     assert np.array_equal(r.counts, counts), f"{(r.counts != counts).sum()} counts differ"
     assert np.array_equal(r.zz.view(np.uint32), zz.view(np.uint32)), f"{(r.zz != zz).sum()} |z|^2 differ"
-    want_it = int(np.where(counts == p.UNRESOLVED, max_it, np.where(counts == p.INTERIOR, 0, counts))
+    if flags & PER and (w <= 21 or "bulb" in name):  # (the seahorse tile has none below 600 when wide)
+        assert (zz.view(np.uint32)[counts == p.INTERIOR] > 0).any()
+    proof = zz.view(np.uint32).astype(np.int64)  # a proven pixel counts its proof iteration
+    want_it = int(np.where(counts == p.UNRESOLVED, max_it, np.where(counts == p.INTERIOR, proof, counts))
                   .sum(dtype=np.int64))
     assert r.iterations == want_it
 

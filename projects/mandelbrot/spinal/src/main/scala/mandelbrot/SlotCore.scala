@@ -126,6 +126,12 @@ class EscapeIteration(cfg: AccelConfig) extends IterationUnit(cfg) {
   * `maxIt` and `abort` are per job context; a pixel names its context in its tag. Pixels of an
   * aborted context finish at once, flagged `dropped`. A pixel proven interior before it came
   * (`interior`) finishes after its first pass, with count 0.
+  *
+  * The periodicity check (`periodic`, per context; ROADMAP.md phase 3): each slot keeps a saved z,
+  * z_0 = 0 at the start. When z_n (n <= MAX_IT, z_(n-1) not escaped) equals it bit for bit, the
+  * orbit repeats, so it never escapes: the pixel finishes as interior with count n, the iteration
+  * of the proof. After the test, z_n is saved when n has at most 3 significant bits
+  * (`fixed.period_refresh`), which depends on n only, never on MAX_IT.
   */
 class SlotCore(cfg: AccelConfig) extends Component {
   import cfg._
@@ -134,6 +140,7 @@ class SlotCore(cfg: AccelConfig) extends Component {
   val io = new Bundle {
     val maxIt     = in Vec (UInt(32 bits), nCtx)
     val abort     = in Bits (nCtx bits)
+    val periodic  = in Bits (nCtx bits)
     val s         = slave Stream (CorePixel(cfg))
     val m         = master Stream (CoreResult(cfg))
     val iterating = out Bool () // this cycle starts a real iteration (for the statistics)
@@ -153,6 +160,12 @@ class SlotCore(cfg: AccelConfig) extends Component {
   val magMem     = lutram(UInt(magBits bits)) // result of a slot that waits for the output
   val escMem     = lutram(Bool())
   val intMem     = lutram(Bool()) // proven interior: finishes on its first pass
+  // The periodicity check. Its memories are written one cycle late, from registers, which keeps the
+  // compare and the refresh test out of the slot's own cycle; a slot comes back only n cycles later.
+  require(n >= 2)
+  val oldX, oldY = lutram(SInt(w bits)) // the saved z
+  val saveMem    = lutram(Bool()) // period_refresh(j + 1): save the z now at the output
+  val hitMem     = lutram(Bool()) // z_j equalled the saved z: finish as interior with count j
 
   val busy, waiting = Reg(Bits(n bits)) init (0)
 
@@ -168,15 +181,23 @@ class SlotCore(cfg: AccelConfig) extends Component {
   val running = busy(ptr) && !waiting(ptr)
   val stop    = it.io.mStop
   val proven  = intMem.readAsync(ptr, writeFirst)
-  val finish  = running && (stop || limMem.readAsync(ptr, writeFirst) || aborted || proven)
+  val atLimit = limMem.readAsync(ptr, writeFirst)
+  val jNext   = j + 1
+  // Found on the previous pass: z_j equals the saved z, so z_j did not escape and never will.
+  val hit       = hitMem.readAsync(ptr, writeFirst) // stays set while the pixel waits for the output
+  val periodHit = running && hit
+  val finish  = running && (stop || atLimit || aborted || proven || periodHit)
   val cont    = running && !finish
+  // z_(j+1) is at the output now; tested (if the pixel goes on) and saved, both one cycle late
+  val same = it.io.mA === oldX.readAsync(ptr, writeFirst) && it.io.mB === oldY.readAsync(ptr, writeFirst)
+  val save = saveMem.readAsync(ptr, writeFirst)
 
   val res = Stream(CoreResult(cfg))
   res.valid   := finish || isWait
   res.tag     := tag
   res.count   := j
   res.dropped := aborted
-  res.interior := proven
+  res.interior := proven || hit // hit: z_j did not escape, so neither stop nor a wrong "interior"
   when(isWait) {
     res.mag     := magMem.readAsync(ptr, writeFirst)
     res.escaped := escMem.readAsync(ptr, writeFirst)
@@ -201,7 +222,20 @@ class SlotCore(cfg: AccelConfig) extends Component {
   tagMem.write(ptr, io.s.tag, enable = load)
   intMem.write(ptr, io.s.interior, enable = load)
 
-  val jNext = j + 1
+  val late = new Area { // this cycle's slot, one cycle later
+    val ptr   = RegNext(SlotCore.this.ptr)
+    val step  = RegNext(load || cont) init (False) // the slot was loaded or went on
+    val j     = RegNext(Mux(load, U(0), jNext)) // its new j
+    val hit   = RegNext(!load && io.periodic(ctx) && same)
+    val zSave = RegNext(load || save)
+    val zA    = RegNext(Mux(load, S(0, w bits), it.io.mA))
+    val zB    = RegNext(Mux(load, S(0, w bits), it.io.mB))
+    hitMem.write(ptr, hit, enable = step)
+    saveMem.write(ptr, ((((j ^ (j + 1)) << 2) | 3) >= j + 1), enable = step) // period_refresh(j + 1)
+    oldX.write(ptr, zA, enable = step && zSave)
+    oldY.write(ptr, zB, enable = step && zSave)
+  }
+
   jMem.write(ptr, Mux(load, U(0), jNext), enable = load || cont)
   limMem.write(ptr, Mux(load, io.maxIt(io.s.ctx) === 0, jNext === io.maxIt(ctx)), enable = load || cont)
 

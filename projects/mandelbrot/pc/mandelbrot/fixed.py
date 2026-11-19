@@ -30,6 +30,7 @@ from functools import cached_property
 LIMB = 26  # bits per limb
 UNRESOLVED = 0xFFFFFFFF
 INTERIOR = 0xFFFFFFFE
+FLAG_PERIODICITY = 1 << 0
 FLAG_CARDIOID = 1 << 1
 
 # The cardioid/bulb test (ROADMAP.md, phase 3): coordinates truncated to G fraction bits, products
@@ -60,6 +61,13 @@ def cardioid_bulb(x: int, y: int, f_bits: int) -> bool:
         return True
     c = X + (1 << G)
     return c * c + y2 <= BULB_LIMIT
+
+
+def period_refresh(n: int) -> bool:
+    """The periodicity check (ROADMAP.md, phase 3) saves z_n after testing it when n has at most 3
+    significant bits (n < 8, or a multiple of 2^(floor(log2 n) - 2)): four saves per octave. It
+    depends on n only, never on max_it, so a run to max_it M' is a run to M > M' stopped early."""
+    return (n & -n) << 3 > n
 
 
 def wrap(v: int, bits: int) -> int:
@@ -124,12 +132,20 @@ class WideFormat:
         x2, y2, s2 = sq(abs(x)), sq(abs(y)), sq(abs(x + y))
         return wrap(x2 - y2 + cx, self.w), wrap(s2 - x2 - y2 + cy, self.w), x2 + y2
 
-    def pixel(self, cx: int, cy: int, max_it: int, square=None) -> tuple[int, int]:
-        """(count, |z_n|^2 at escape in units 2^-F), or (UNRESOLVED, 0)."""
+    def pixel(self, cx: int, cy: int, max_it: int, square=None, periodicity=False) -> tuple[int, int]:
+        """(count, |z_n|^2 at escape in units 2^-F), or (UNRESOLVED, 0), or with `periodicity`
+        (INTERIOR, k): z_k equals a saved z_m (m < k) bit for bit, so the orbit repeats and never
+        escapes in this arithmetic, at any max_it. The saved z starts as z_0 = 0 (period_refresh)."""
         bail = self.r2 << self.f
         x = y = 0
+        sx = sy = 0
         for n in range(1, max_it + 1):
             x, y, _ = self.step(x, y, cx, cy, square)
+            if periodicity:
+                if x == sx and y == sy:
+                    return INTERIOR, n
+                if period_refresh(n):
+                    sx, sy = x, y
             sq = square or self.square
             mag = sq(abs(x)) + sq(abs(y))
             if mag >= bail:
@@ -149,5 +165,7 @@ class WideFormat:
         iteration of the proof, 0 for the cardioid test)."""
         if flags & FLAG_CARDIOID and cardioid_bulb(cx, cy, self.f):
             return INTERIOR
-        count, mag = self.pixel(cx, cy, max_it)
+        count, mag = self.pixel(cx, cy, max_it, periodicity=bool(flags & FLAG_PERIODICITY))
+        if count == INTERIOR:
+            return (mag << 32) | INTERIOR
         return (self.mag_to_f32_bits(mag) << 32) | count

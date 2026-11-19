@@ -8,7 +8,8 @@ from fractions import Fraction
 import numpy as np
 import pytest
 
-from mandelbrot.fixed import LIMB, UNRESOLVED, WideFormat, cardioid_bulb, wrap
+from mandelbrot.fixed import (FLAG_PERIODICITY, INTERIOR, LIMB, UNRESOLVED, WideFormat, cardioid_bulb,
+                             period_refresh, wrap)
 
 
 @pytest.mark.parametrize("w,products", [(64, 5), (96, 8), (128, 11)])
@@ -121,3 +122,56 @@ def test_cardioid_bulb_margin_is_small():
         q = (X - Fraction(1, 4)) ** 2 + Y * Y
         if q * (q + X - Fraction(1, 4)) - Y * Y / 4 < -Fraction(1, 10**4):
             assert cardioid_bulb(fx, fy, 54)
+
+
+def slow_points(fm, n, seed):
+    """Points near the boundary (seahorse valley and the period-3 bulb): slow escapes and slow cycles."""
+    rnd = random.Random(seed)
+    out = []
+    for cx, cy, r in [(-0.7436, 0.1318, 0.01), (-0.1225, 0.7449, 0.02), (-1.25, 0.0, 0.05)]:
+        out += [(round((cx + rnd.uniform(-r, r)) * 2**fm.f), round((cy + rnd.uniform(-r, r)) * 2**fm.f))
+                for _ in range(n)]
+    return out
+
+
+def test_period_refresh_schedule():
+    assert [n for n in range(1, 41) if period_refresh(n)] == [*range(1, 9), 10, 12, 14, 16, 20, 24, 28, 32, 40]
+    for j in range(1 << 14):  # the RTL's form, from j = n - 1
+        assert period_refresh(j + 1) == ((((j ^ (j + 1)) << 2) | 3) >= j + 1)
+
+
+def test_periodicity_never_wrong_and_changes_nothing_else():
+    fm = WideFormat(64)
+    proven = 0
+    for cx, cy in slow_points(fm, 30, 1):
+        rec = fm.record(cx, cy, 2000, FLAG_PERIODICITY)
+        plain = fm.record(cx, cy, 2000)
+        if rec & 0xFFFFFFFF == INTERIOR:
+            proven += 1
+            k = rec >> 32
+            assert 1 <= k <= 2000 and plain == UNRESOLVED
+            assert fm.record(cx, cy, 6000) == UNRESOLVED  # a real cycle: it never escapes
+        else:
+            assert rec == plain
+    assert proven >= 10
+
+
+def test_periodicity_does_not_depend_on_max_it():
+    """The cache's rule (cache.py): a record at max_it M answers M' < M."""
+    fm = WideFormat(64)
+    for cx, cy in slow_points(fm, 12, 2):
+        full = fm.record(cx, cy, 1500, FLAG_PERIODICITY)
+        count, k = full & 0xFFFFFFFF, full >> 32
+        for m in (1, 7, 64, 300, 1024, 1499):
+            lower = fm.record(cx, cy, m, FLAG_PERIODICITY)
+            if count == INTERIOR:
+                assert lower == (full if k <= m else UNRESOLVED)
+            elif count == UNRESOLVED or count > m:
+                assert lower == UNRESOLVED
+            else:
+                assert lower == full
+
+
+def test_periodicity_c_zero():
+    fm = WideFormat(64)
+    assert fm.record(0, 0, 10, FLAG_PERIODICITY) == (1 << 32) | INTERIOR  # z_1 = 0 = z_0

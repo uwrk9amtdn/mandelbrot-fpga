@@ -30,9 +30,10 @@ object AccelRegs {
   val STEP             = 0x040
   val SIZE             = 0x050 // 15:0 width, 31:16 height, 1..256 each
   val MAX_IT           = 0x054
-  val FLAGS            = 0x058 // bit 0 periodicity check (not yet), bit 1 cardioid/bulb test
+  val FLAGS            = 0x058 // bit 0 periodicity check, bit 1 cardioid/bulb test
   val FLAG_CARDIOID    = 1 << 1
-  val implementedFlags = FLAG_CARDIOID
+  val FLAG_PERIODICITY = 1 << 0
+  val implementedFlags = FLAG_PERIODICITY | FLAG_CARDIOID
   val JOB_ID           = 0x05C
   val RESULT_BASE      = 0x060 // 64 bits; only the low 32 are used (the high word must be 0)
   val RESULT_SLOTS     = 0x068
@@ -57,7 +58,7 @@ object AccelRegs {
     val arith =
       if (cfg.wide) s"fpga-wide|w=${cfg.w}|i=${cfg.intBits}|r2=${cfg.r2}|limb=26|k=${cfg.wideParams.droppedDiagonals}"
       else s"fpga-slotcore|w=${cfg.w}|i=${cfg.intBits}|f=${cfg.fracWidth}|r2=4"
-    crc.update(s"$arith|records-v1|cardioid-g${CardioidCheck.G}-v1".getBytes("UTF-8"))
+    crc.update(s"$arith|records-v1|cardioid-g${CardioidCheck.G}-v1|period-exact-q4-v1".getBytes("UTF-8"))
     crc.getValue
   }
 }
@@ -72,6 +73,7 @@ case class AccelJob(cfg: AccelConfig) extends Bundle {
   val x0, y0, step  = SInt(cfg.w bits)
   val width, height = UInt(9 bits) // 1..256
   val maxIt         = UInt(32 bits)
+  val periodic      = Bool() // FLAGS bit 0
   val cardioid      = Bool() // FLAGS bit 1
   val jobId         = UInt(16 bits)
   val base          = UInt(32 bits) // address of the job's result slot
@@ -95,10 +97,12 @@ case class DoneEntry() extends Bundle {
   *
   * Results: one 64-bit record per pixel at base + 8 * (row * width + col): the u32 count in the
   * low half (0xFFFFFFFF if the pixel did not escape, 0xFFFFFFFE if it was proven interior), the
-  * f32 |z|² at escape in the high half (truncated; 0 if it did not escape, and for the cardioid
-  * test the proof iteration, which is 0). Each record is one AXI write of one beat, with strobes.
+  * f32 |z|² at escape in the high half (truncated; 0 if it did not escape), or for a proven-interior
+  * pixel the u32 iteration of the proof (0 for the cardioid test). Each record is one AXI write of
+  * one beat, with strobes.
   *
-  * FLAGS bit 1: the cardioid/bulb test (CardioidCheck) between the issuer and the cores.
+  * FLAGS bit 0: the periodicity check in the cores (SlotCore). Bit 1: the cardioid/bulb test
+  * (CardioidCheck) between the issuer and the cores.
   */
 class MandelbrotAccel(cfg: AccelConfig) extends Component {
   import cfg._
@@ -189,6 +193,7 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
       c.job.width  := width.resized
       c.job.height := height.resized
       c.job.maxIt  := stMaxIt
+      c.job.periodic := stFlags(0)
       c.job.cardioid := stFlags(1)
       c.job.jobId  := stJobId
       c.job.base   := resultBase(31 downto 0) + (stSlot << 19).resize(32) // 512 KB slots
@@ -283,11 +288,13 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
   // Per-context settings reach the cores two cycles late; a new job's pixels take longer.
   val maxItV = Delay(Vec(ctxs.map(_.job.maxIt)), 2)
   val abortV = Delay(ctxs.map(_.aborted).asBits, 2)
+  val periodicV = Delay(ctxs.map(_.job.periodic).asBits, 2)
 
   val cores = Seq.fill(nCores)(new SlotCore(cfg))
   for (c <- cores) {
     c.io.maxIt := maxItV
     c.io.abort := abortV
+    c.io.periodic := periodicV
   }
 
   /** Each pixel goes to the first child that can take it; children are buffered, so `ready` is
@@ -336,6 +343,8 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
   case class Normalize() extends Bundle {
     val addr  = UInt(32 bits)
     val count = UInt(32 bits)
+    val proof = Bits(32 bits) // the high half of a proven-interior record: the proof iteration
+    val proven = Bool()
     val mag   = UInt(magBits bits)
     val top   = UInt(log2Up(magBits) bits) // index of the highest set bit of mag
     val ctx   = UInt(ctxBits bits)
@@ -349,6 +358,8 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
     val o = Normalize()
     o.addr  := jobs(r.ctx).base + (r.idx << 3).resize(32)
     o.count := Mux(r.escaped, r.count, Mux(r.interior, U(BigInt(0xFFFFFFFEL), 32 bits), U(BigInt(0xFFFFFFFFL), 32 bits)))
+    o.proof := r.count.asBits
+    o.proven := !r.escaped && r.interior
     o.mag   := r.mag
     o.top   := OHToUInt(OHMasking.first(r.mag.asBits.reversed).reversed)
     o.ctx   := r.ctx
@@ -360,7 +371,7 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
     val exp  = r.top.resize(8) + (127 - magFrac) // top - magFrac + 127
     val f32  = Mux(r.mag === 0, B(0, 32 bits), B"0" ## exp.asBits ## norm(magBits - 2 downto magBits - 24).asBits)
     o.addr := r.addr
-    o.data := f32 ## r.count.asBits
+    o.data := Mux(r.proven, r.proof, f32) ## r.count.asBits
     o.ctx  := r.ctx
     o
   }.m2sPipe()

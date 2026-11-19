@@ -22,7 +22,8 @@ HEADER = struct.Struct("<4sHHII")  # magic, type, flags, length, reserved
 
 # Count codes for pixels that did not escape.
 UNRESOLVED = 0xFFFFFFFF  # reached max_it; may escape at a higher max_it
-INTERIOR = 0xFFFFFFFE  # proven interior (periodicity or cardioid check); final at any max_it
+INTERIOR = 0xFFFFFFFE  # proven interior (periodicity or cardioid check); final at any higher max_it.
+# Its second-plane value is not |z|^2 but u32 k, the iteration of the proof (0 for the cardioid test).
 MAX_MAX_IT = 0xFFFFFFFD
 
 # Feature bits (INFO) and request flags (TILE_REQ) share their numbering.

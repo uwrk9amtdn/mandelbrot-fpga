@@ -10,7 +10,7 @@
 #define PROTO_MAX_PAYLOAD (16u << 20)
 
 #define COUNT_UNRESOLVED 0xFFFFFFFFu // reached max_it
-#define COUNT_INTERIOR 0xFFFFFFFEu   // proven interior
+#define COUNT_INTERIOR 0xFFFFFFFEu   // proven interior; the |z|^2 word holds u32 k, the proof's iteration
 #define MAX_MAX_IT 0xFFFFFFFDu
 
 // Feature bits (INFO); bits 0-2 are also request flags (TILE_REQ).

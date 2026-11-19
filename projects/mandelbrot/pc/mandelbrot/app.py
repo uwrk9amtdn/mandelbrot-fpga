@@ -4,12 +4,14 @@
   python -m mandelbrot.app --host 192.168.10.10      # the board (mandelbrotd)
   python -m mandelbrot.app --sim                     # a simulated server in this process
   python -m mandelbrot.app --sim --sim-format board  # ... with the board's number format
+  python -m mandelbrot.app --offline                 # browse the disk cache, without a server
 
 Mouse: wheel zooms at the cursor, left drag pans, right drag zooms into a box, double click centres.
-Keys: + / - double or halve max_it, R requests the screen again, Esc stops requesting (any
-navigation resumes), Backspace goes back to the previous view, H hides the panels.
+Keys: + / - double or halve max_it, R requests the screen again (bypassing the cache), Esc stops
+requesting (any navigation resumes), Backspace goes back to the previous view, H hides the panels.
 
-Tiles are drawn at physical pixels (one screen pixel is one lattice pixel).
+Tiles are drawn at physical pixels (one screen pixel is one lattice pixel). Tiles go to a disk cache
+(cache.py; --no-cache turns it off); offline, tiles the cache doesn't have are hatched.
 """
 
 import argparse
@@ -17,6 +19,7 @@ import math
 import threading
 import time
 from fractions import Fraction
+from pathlib import Path
 
 import moderngl
 from imgui_bundle import hello_imgui, imgui
@@ -26,9 +29,10 @@ from .colouring import (DEFAULT_DENSITY, MODES, PALETTE_MODES, PRESETS, bake, hi
                         save_palettes)
 from .gl_view import TileRenderer
 from .headless import write_png
-from .net import Connection
+from .cache import DiskCache
+from .net import Connection, OfflineConnection
 from .tiles import TileManager, TileStore
-from .view import View, step
+from .view import TILE, View, step
 
 SIM_FORMATS = {  # name -> (W, F, R^2)
     "wide": (64, 54, 256),  # the phase 2 format, smooth colouring works
@@ -57,9 +61,13 @@ class App:
         self.args = args
         self.host = args.host or "192.168.10.10"
         self.port = args.port
-        self.sim_mode = args.sim or not args.host
+        self.source = "offline" if args.offline else "sim" if args.sim or not args.host else "board"
         self.sim_format = args.sim_format
         self.store = TileStore(256)
+        self.cache = None if args.no_cache else DiskCache(args.cache_dir, int(args.cache_limit * 2**30))
+        self.offline_servers: list[p.Info] = []  # what offline mode can browse
+        self.offline_id = None if args.offline in (None, "latest") else int(args.offline, 16)
+        self.confirm_clear = None  # "all" or an arithmetic id, while asking
         self.conn: Connection | None = None
         self.mgr: TileManager | None = None
         self.server = None
@@ -107,7 +115,14 @@ class App:
     def _connect_worker(self):
         server = None
         try:
-            if self.sim_mode:
+            if self.source == "offline":
+                infos = DiskCache.known_servers(self.cache.root if self.cache else None)
+                info = next((i for i in infos if self.offline_id in (None, i.arith_id)), None)
+                if info is None:
+                    raise ValueError("no cached tiles of that arithmetic id" if infos else "the cache is empty")
+                self.conn_result = (OfflineConnection(info), None)
+                return
+            if self.source == "sim":
                 from .sim_server import SimServer
 
                 w, f, r2 = SIM_FORMATS[self.sim_format]
@@ -131,7 +146,10 @@ class App:
             return
         self.conn, self.server = r
         self.store.clear()
-        self.mgr = TileManager(self.conn, self.store, self.max_it)
+        offline = isinstance(self.conn, OfflineConnection)
+        if self.cache and not offline:
+            self.cache.save_info(self.conn.info)
+        self.mgr = TileManager(self.conn, self.store, self.max_it, cache=self.cache, offline=offline)
         self.max_it = self.mgr.max_it
         self.history.clear()
         self.view = self.initial_view()
@@ -184,7 +202,7 @@ class App:
         self.ctx = moderngl.create_context()
         self.renderer = TileRenderer(self.ctx, self.store.capacity)
         self.renderer.set_palette(bake(self.palettes()[self.palette]))
-        if self.args.sim or self.args.host:
+        if self.args.sim or self.args.host or self.args.offline:
             self.connect()
 
     def background(self):
@@ -236,7 +254,7 @@ class App:
     def before_swap(self):
         if not self.args.screenshot:
             return
-        done = self.mgr is not None and self.mgr.complete and not self.mgr.pending
+        done = self.mgr is not None and self.mgr.idle and (self.mgr.complete or self.mgr.offline)
         if done or time.monotonic() - self.started > self.args.wait:
             w, h = self.size
             data = self.ctx.screen.read(viewport=(0, 0, w, h), components=3)
@@ -251,6 +269,8 @@ class App:
         if self.mgr and self.view:
             self._mouse()
             self._keys()
+        if self.mgr and self.view:
+            self._hatch_missing()
         if self.show_panels:
             self._panels()
         if self.message and time.monotonic() < self.message_until:
@@ -261,6 +281,22 @@ class App:
             dl.add_rect_filled(imgui.ImVec2(pos.x - 8, pos.y - 4), imgui.ImVec2(pos.x + size.x + 8, pos.y + size.y + 4),
                                imgui.get_color_u32(imgui.ImVec4(0, 0, 0, 0.7)))
             dl.add_text(pos, imgui.get_color_u32(imgui.ImVec4(1, 1, 0.6, 1)), self.message)
+
+    def _hatch_missing(self):
+        """Offline: diagonal lines over the current tiles the cache doesn't have."""
+        io = imgui.get_io()
+        sx, sy = io.display_framebuffer_scale.x, io.display_framebuffer_scale.y
+        w, h = self.size
+        dl = imgui.get_background_draw_list()
+        line = imgui.get_color_u32(imgui.ImVec4(0.6, 0.6, 0.65, 0.6))
+        shade = imgui.get_color_u32(imgui.ImVec4(0.1, 0.1, 0.12, 0.8))
+        for left, top in self.mgr.missing(self.view, w, h):
+            x0, y0, x1, y1 = left / sx, top / sy, (left + TILE) / sx, (top + TILE) / sy
+            dl.push_clip_rect(imgui.ImVec2(x0, y0), imgui.ImVec2(x1, y1), True)
+            dl.add_rect_filled(imgui.ImVec2(x0, y0), imgui.ImVec2(x1, y1), shade)
+            for k in range(0, 2 * TILE, 16):
+                dl.add_line(imgui.ImVec2((left + k) / sx, y0), imgui.ImVec2((left + k - TILE) / sx, y1), line)
+            dl.pop_clip_rect()
 
     # ------------------------------------------------------------------------------- input
 
@@ -344,6 +380,8 @@ class App:
                 self._colour_panel()
             if imgui.collapsing_header("Statistics", imgui.TreeNodeFlags_.default_open):
                 self._stats_panel()
+        if self.cache and imgui.collapsing_header("Cache"):
+            self._cache_panel()
         if imgui.collapsing_header("Help"):
             imgui.text_disabled(HELP)
         imgui.end()
@@ -351,7 +389,8 @@ class App:
     def _connection_panel(self):
         if self.conn:
             info = self.conn.info
-            where = f"simulated ({self.sim_format})" if self.server else f"{self.host}:{self.port}"
+            where = ("offline (disk cache only)" if isinstance(self.conn, OfflineConnection)
+                     else f"simulated ({self.sim_format})" if self.server else f"{self.host}:{self.port}")
             imgui.text(f"connected: {where}")
             imgui.text(f"W = {info.w}, F = {info.f}, R^2 = {info.bailout_r2}, {info.n_cores} cores at "
                        f"{info.clock_khz / 1000:.1f} MHz")
@@ -359,8 +398,25 @@ class App:
             if imgui.button("Disconnect"):
                 self.disconnect()
             return
-        _, self.sim_mode = imgui.checkbox("simulated server", self.sim_mode)
-        if self.sim_mode:
+        for name, label in (("board", "board"), ("sim", "simulated server"), ("offline", "offline (cache)")):
+            if imgui.radio_button(label, self.source == name):
+                self.source = name
+                if name == "offline":
+                    self.offline_servers = DiskCache.known_servers(self.cache.root if self.cache else None)
+            imgui.same_line()
+        imgui.new_line()
+        if self.source == "offline":
+            servers = self.offline_servers
+            if not servers:
+                imgui.text_disabled("no cached tiles yet")
+            else:
+                ids = [i.arith_id for i in servers]
+                cur = ids.index(self.offline_id) if self.offline_id in ids else 0
+                labels = [f"{i.arith_id:08x}: W={i.w} F={i.f} R^2={i.bailout_r2}, "
+                          f"{self.cache.sizes.get(i.arith_id, 0) / 2**20:.0f} MB" for i in servers]
+                _, cur = imgui.combo("arithmetic", cur, labels)
+                self.offline_id = ids[cur]
+        elif self.source == "sim":
             names = list(SIM_FORMATS)
             _, i = imgui.combo("format", names.index(self.sim_format), [
                 f"{n}: W={w} F={f} R^2={r}" for n, (w, f, r) in SIM_FORMATS.items()])
@@ -368,7 +424,7 @@ class App:
         else:
             _, self.host = imgui.input_text("host", self.host)
             _, self.port = imgui.input_int("port", self.port)
-        imgui.begin_disabled(self.connecting)
+        imgui.begin_disabled(self.connecting or (self.source == "offline" and not self.cache))
         if imgui.button("Connecting..." if self.connecting else "Connect"):
             self.connect()
         imgui.end_disabled()
@@ -542,8 +598,8 @@ class App:
         m = self.mgr
         st = m.stats
         imgui.text(f"in flight {len(m.pending)}, tiles in memory {len(self.store)}/{self.store.capacity}")
-        imgui.text(f"received {st.received}, aborted {st.aborted}, outside the format {st.synthesized}, "
-                   f"errors {st.errors}")
+        imgui.text(f"received {st.received}, from the cache {st.from_cache}, aborted {st.aborted}, "
+                   f"outside the format {st.synthesized}, errors {st.errors}")
         r = st.rates(self.conn.info.n_cores)
         if r:
             line = f"{r['tiles/s']:.1f} tiles/s, {r['MB/s']:.1f} MB/s, {r['G it/s']:.2f} G iterations/s"
@@ -557,8 +613,54 @@ class App:
         if m.last_error:
             imgui.text_colored(imgui.ImVec4(1, 0.5, 0.4, 1), m.last_error)
 
+    def _cache_panel(self):
+        c = self.cache
+        home = str(Path.home())
+        root = str(c.root)
+        imgui.push_text_wrap_pos(imgui.get_font_size() * 30)
+        imgui.text_wrapped("~" + root[len(home):] if root.startswith(home) else root)
+        imgui.pop_text_wrap_pos()
+        used = f"{c.size / 2**30:.2f} GB" if c.scanned else "scanning..."
+        imgui.text(f"{used} of {c.limit / 2**30:.1f} GB")
+        looked = c.hits + c.misses
+        rate = f", hit rate {100 * c.hits / looked:.0f} %" if looked else ""
+        imgui.text(f"hits {c.hits}, misses {c.misses}{rate}" + (f", damaged {c.damaged}" if c.damaged else ""))
+        if self.mgr:
+            imgui.begin_disabled(isinstance(self.conn, OfflineConnection))
+            _, self.mgr.bypass = imgui.checkbox("bypass (request every tile, still write)", self.mgr.bypass)
+            changed, off = imgui.checkbox("offline / cache only", self.mgr.offline)
+            if changed:
+                if off:
+                    self.mgr.stop()  # cancel what is in flight
+                self.mgr.offline = off
+                self.mgr.resume()
+            imgui.end_disabled()
+        if self.confirm_clear is None:
+            if imgui.button("Clear the cache"):
+                self.confirm_clear = "all"
+            if self.conn:
+                imgui.same_line()
+                if imgui.button(f"Clear {self.conn.info.arith_id:08x}"):
+                    self.confirm_clear = self.conn.info.arith_id
+        else:
+            what = "every tile" if self.confirm_clear == "all" else f"the tiles of {self.confirm_clear:08x}"
+            imgui.text_colored(imgui.ImVec4(1, 0.8, 0.3, 1), f"delete {what}?")
+            imgui.same_line()
+            if imgui.button("Yes, delete"):
+                c.clear(None if self.confirm_clear == "all" else self.confirm_clear)
+                if self.mgr:
+                    self.mgr.missed.clear()
+                self.confirm_clear = None
+            imgui.same_line()
+            if imgui.button("No"):
+                self.confirm_clear = None
+        if c.last_error:
+            imgui.text_colored(imgui.ImVec4(1, 0.5, 0.4, 1), c.last_error)
+
     def shutdown(self):
         self.disconnect()
+        if self.cache:
+            self.cache.close()  # finishes the queued writes
         if self.renderer:
             self.renderer.release()
 
@@ -569,6 +671,11 @@ def main():
     ap.add_argument("--port", type=int, default=p.PORT)
     ap.add_argument("--sim", action="store_true", help="start a simulated server in this process")
     ap.add_argument("--sim-format", choices=list(SIM_FORMATS), default="wide")
+    ap.add_argument("--offline", nargs="?", const="latest", metavar="ARITH_ID",
+                    help="browse the disk cache without a server (default: the last server's arithmetic id)")
+    ap.add_argument("--cache-dir", help="disk cache directory (default ~/.cache/mandelbrot-fpga/tiles)")
+    ap.add_argument("--cache-limit", type=float, default=4.0, help="disk cache size limit in GB")
+    ap.add_argument("--no-cache", action="store_true", help="no disk cache")
     ap.add_argument("--re", default="-0.75", help="centre, real part")
     ap.add_argument("--im", default="0", help="centre, imaginary part")
     ap.add_argument("--level", type=int, help="zoom level (default: the whole set)")

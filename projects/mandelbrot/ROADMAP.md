@@ -106,10 +106,19 @@ Status: phase 1 in progress (PC application milestone 1 is done, see
   - u32 iteration count (defined in [PC_APP_PLAN.md](PC_APP_PLAN.md)), with two codes for pixels that
     did not escape:
     - 0xFFFFFFFF: reached MAX_IT. Not resolved: it may escape at a higher MAX_IT.
-    - 0xFFFFFFFE: proven interior, by the periodicity or the cardioid check. Final at any MAX_IT.
-  - f32 |z|² at escape. The fixed-point value is converted to a float with a leading-zero count and a
-    shift, which is cheap. This is what smooth colouring needs. It is 0 for pixels that did not
-    escape.
+    - 0xFFFFFFFE: proven interior, by the periodicity or the cardioid check. Final at any higher
+      MAX_IT.
+  - the high 32 bits depend on the count:
+    - escaped: f32 |z|² at escape. The fixed-point value is converted to a float with a leading-zero
+      count and a shift, which is cheap. This is what smooth colouring needs.
+    - proven interior: u32 k, the iteration at which the proof was made (0 for the cardioid/bulb
+      test, the iteration of the match for the periodicity check). The counter is already in the
+      pipeline, so this costs nothing. The PC's cache needs it (PC_APP_PLAN.md, "Tile cache"): a tile
+      computed at MAX_IT M answers M' < M only if it knows which proofs a run to M' would have reached
+      (k <= M').
+    - reached MAX_IT: 0.
+    - Decided 2026-11-19. Tiles from before have proven-interior pixels only from the cardioid test,
+      whose k is 0, the value already in the field, so the result-format version stays 1.
 - **Result writer:** results come back out of order, so each one carries its pixel index and the
   writer computes the address from it.
   - **Write combining.** Pixels are issued in raster order and neighbours usually have close
@@ -245,7 +254,7 @@ Source: <https://en.wikipedia.org/wiki/Plotting_algorithms_for_the_Mandelbrot_se
 | Histogram colouring | PC | 1 | Whole-image pass. Combine with smooth. |
 | HSV/LCH/exponential mapping | PC | 1 | |
 | Cardioid / period-2 bulb test | FPGA pixel issuer | 3 | q = (x−¼)² + y², interior if q(q + x − ¼) ≤ ¼y²; bulb: (x+1)² + y² ≤ 1/16. Computed in low precision (27 bits) with a conservative margin: a wrong "outside" only costs time, never a wrong pixel. Mostly helps shallow views. |
-| Periodicity check | FPGA core | 3 | Per pipeline slot, store z_old (2×W bits, in MLAB/M20K) and compare \|x − x_old\| and \|y − y_old\| < ε. Brent's variant: refresh z_old at powers of 2, not every 20 iterations. Huge gain for interior pixels at high max_it. |
+| Periodicity check | FPGA core | 3 | Per pipeline slot, store z_old (2×W bits, in MLAB/M20K) and compare \|x − x_old\| and \|y − y_old\| < ε. Brent's variant: refresh z_old at powers of 2, not every 20 iterations. Huge gain for interior pixels at high max_it. **Rule:** whether and when a pixel is proven may depend only on c and the iteration number, never on MAX_IT (ε and the refresh schedule don't scale with it), so a run to M' is a run to M stopped early, which the PC's cache relies on. The record carries the iteration of the proof (see "Result per pixel"). |
 | Rectangle checking (Mariani-Silver) | PC | 3 | Compute the border of a rectangle first; if it is all one count, fill the inside, otherwise split into four. A border is four thin tile requests (1 x n and n x 1), batched in one go so the queue stays full. Only regions whose border did not escape are filled: exterior bands aren't flat in smooth colouring (as the article notes), and the colouring can change after the render. The fill value is "proven interior" if the whole border is, otherwise "reached max_it". |
 | Border-first fill in the pixel issuer | not planned (note) | | An alternative to Mariani-Silver on the PC. A flag on a normal tile: the issuer computes the 1020 border pixels of a 256x256 tile first. If none escaped, the job ends as "filled" and nothing else is iterated; otherwise the remaining pixels are issued as usual. While it waits for the border, the cores take the next job's pixels. An all-interior tile costs 1.6 % of its pixels, with no thin requests and no round trips. A partly interior tile gains nothing unless the test is repeated on sub-blocks (for example 64x64). It overlaps with the periodicity check, so look at it again only after measuring that one. |
 | Border tracing | not planned | | Rectangle checking gets most of the benefit and fits the tile/job model. |

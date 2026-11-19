@@ -68,8 +68,11 @@ every request is self-contained.
 - **Tile data, in two planes:**
   - the counts: u32 per pixel, row-major, width × height. Two codes mark pixels that did not escape:
     0xFFFFFFFF reached max_it (not resolved), and 0xFFFFFFFE is proven interior by the periodicity
-    or the cardioid check (final at any max_it). So max_it is at most 0xFFFFFFFD.
-  - |z_n|² at escape: f32 per pixel, in the same order. 0 for pixels that did not escape.
+    or the cardioid check (final at any higher max_it). So max_it is at most 0xFFFFFFFD.
+  - the second plane, 32 bits per pixel in the same order: for an escaped pixel f32 |z_n|² at
+    escape; for a proven-interior one u32 k, the iteration at which it was proven (0 for the
+    cardioid test); 0 for a pixel that reached max_it. k lets the cache reuse a tile at a lower
+    max_it exactly (see "Tile cache"). Decided 2026-11-19; ROADMAP.md, "Result per pixel".
 
   The FPGA writes one 64-bit record per pixel (count and |z|² together), which takes one AXI write
   instead of two. `mandelbrotd` splits the records into the two planes while it copies the tile out
@@ -121,7 +124,8 @@ every request is self-contained.
 - **Fast mode:** numpy float64, for developing the app at shallow zoom.
 - **Exact mode:** a bit-exact integer model of the FPGA arithmetic at W bits (slow, for small tiles).
   The app can then send one tile to both the board and the model and compare them bit for bit (a
-  "verify tile" button). This is the end-to-end hardware check.
+  "verify tile" button). This is the end-to-end hardware check. Both sides are computed for the
+  check, never taken from the disk cache: a cached tile is not what the board computes now.
 - It reports a configurable W, F, nCores and max in-flight count, so all the client code paths can be
   tested without the board.
 
@@ -241,8 +245,8 @@ no matter how the view got there.
   at another max_it (see below).
 
 **Files:**
-- **Location:** `~/.cache/mandelbrot-fpga/tiles/<first 2 hex digits>/<sha256>.mbt`. The directory is
-  configurable; on Windows use `%LOCALAPPDATA%`.
+- **Location:** `~/.cache/mandelbrot-fpga/tiles/<arithmetic id>/<first 2 hex digits>/<sha256>.mbt`.
+  The directory is configurable; on Windows use `%LOCALAPPDATA%`.
 - **Header:** magic `'MBTC'`, a format version, the full key, encoding, raw size, iterations, the
   number of unresolved pixels (count 0xFFFFFFFF), and the date.
 - **Data:** the tile data, LZ4-compressed (as received from the board, or compressed by the app).
@@ -260,10 +264,17 @@ no matter how the view got there.
 **Reuse at another max_it:** a cached tile computed with max_it M answers a request with max_it M',
 everything else in the key being the same, in two cases.
 - **M' ≤ M.** Counts up to M' are identical. Pixels with a count above M' become "reached max_it"
-  (0xFFFFFFFF) and their |z|² isn't used. Proven-interior pixels stay as they are.
+  (0xFFFFFFFF, second plane 0). A proven-interior pixel stays proven if its proof iteration k ≤ M',
+  and becomes "reached max_it" otherwise.
 - **The tile has no unresolved pixel,** for any M'. Every pixel either escaped, with a count that
   no higher max_it changes, or is proven interior. Most tiles away from the set are like this, so
   raising max_it recomputes only the tiles that still have unresolved pixels.
+
+Both cases give exactly the tile a fresh render would. They rely on the iterations of a pixel not
+depending on max_it, which ROADMAP.md makes a rule for the periodicity check: max_it only says where
+to stop. Without k, a pixel proven at iteration 600 in a tile at max_it 1000 would show as interior at
+max_it 500, where a fresh render shows "reached max_it": a seam between cached and fresh tiles, and a
+false mismatch in "verify tile".
 
 When the board
 computes a tile again at a higher max_it, the new entry replaces the old one.
@@ -379,11 +390,22 @@ level above and below around the cursor.
    with the simulated server; measure throughput. Nothing below is needed for this. STATUS_REQ and
    STATUS go into `protocol.py`, the simulated server and `headless.py` (which prints them) here;
    the panel that shows them is part of milestone 6.
-5. **Cache:** disk cache with eviction, reuse at another max_it, the cache panel, offline mode.
-   Tests: key canonicalisation, a damaged file counts as a miss, eviction at the size limit, a
-   second render of a view is 100 % hits, a tile without unresolved pixels answers a higher max_it.
+5. **Cache (done 2026-11-19):** disk cache with eviction, reuse at another max_it, the cache panel,
+   offline mode. `cache.py` (`DiskCache`), used by `TileManager` in `tiles.py`; `OfflineConnection`
+   in `net.py`.
+   - Tests (`test_cache.py`): key canonicalisation, a damaged file (truncated, a flipped bit, bad
+     magic, empty, another key) counts as a miss and is deleted, eviction at the size limit, a
+     second render of a view is 100 % hits, a tile without unresolved pixels answers a higher
+     max_it, R and bypass, offline. Driven under Xvfb: the second render of a view sends no request.
+   - Differences from the plan: the files are grouped per arithmetic id
+     (`tiles/<id>/<2 hex>/<sha256>.mbt`), so clearing one id is one directory delete; each id's
+     directory holds the server's INFO (`info.bin`), which offline mode needs to start without a
+     server ("offline" in the Connection panel, `--offline`); lookups run in a thread too, not only
+     writes; a CRC-32 of the raw data catches damage that LZ4 alone would not; a write never
+     replaces a file computed at a higher max_it; reuse at a lower max_it uses the proof iteration k
+     of proven-interior pixels (decided with the user 2026-11-19, see "Reuse at another max_it").
 6. **Tools:** statistics, bookmarks, export, high-resolution render, the exact mode and "verify
-   tile".
+   tile" (both sides computed, bypassing the cache).
 7. **Phase 3 features:** Mariani-Silver in `tiles.py`, the hardware flags in the UI.
 
 ## Open questions

@@ -11,6 +11,9 @@ records which tiles need uploading; gl_view.py does the uploads and the drawing.
 - Requests whose tile is no longer wanted (it left the screen, or the level or max_it changed) are
   cancelled; the others keep running.
 - Tiles outside the W-bit format are filled in here: every pixel escapes at n = 1 with z = c.
+- With a disk cache (cache.py), a tile missing from memory is looked up there first, and requested
+  only on a miss. Complete tiles from the server are written to it. "Bypass" requests every tile and
+  still writes; "offline" (cache only) never requests, and `missing` lists the tiles to hatch.
 """
 
 import time
@@ -21,6 +24,7 @@ from fractions import Fraction
 import numpy as np
 
 from . import protocol as p
+from .cache import CacheKey, DiskCache
 from .net import Closed, Connection, ErrorResult, TileResult
 from .view import TILE, View, max_level, min_level, step, tile_origin, visible_tiles
 
@@ -124,6 +128,7 @@ class Stats:
     received: int = 0  # complete tiles
     aborted: int = 0
     synthesized: int = 0
+    from_cache: int = 0
     errors: int = 0
     iterations: int = 0
     wire_bytes: int = 0
@@ -147,18 +152,26 @@ class Stats:
 class TileManager:
     """Keeps the tiles of a view coming from one connection. Call `update` once per frame."""
 
-    def __init__(self, conn: Connection, store: TileStore, max_it: int = 256, flags: int = 0):
+    def __init__(self, conn: Connection, store: TileStore, max_it: int = 256, flags: int = 0,
+                 cache: DiskCache | None = None, offline: bool = False):
         self.conn = conn
+        self.cache = cache
+        self.bypass = False  # request every tile from the server, but still write the cache
+        self.offline = offline  # cache only: never request
         self.info = conn.info
         self.store = store
         self.max_it = max_it
         self.flags = flags & p.KNOWN_FLAGS
         self.lo = min_level(self.info.w, self.info.f, self.info.bailout_r2)
         self.hi = max_level(self.info.f)
+        self._levels = {step(self.info.f, level): level for level in range(self.lo, self.hi + 1)}
         self.pending: dict[int, TileKey] = {}  # request id -> tile
         self.requested: dict[TileKey, int] = {}  # tile -> request id
         self.cancelled: set[int] = set()  # cancelled, result not back yet
         self.failed: set[TileKey] = set()  # the server refused them; not asked again
+        self.loading: set[TileKey] = set()  # looked up in the disk cache, answer not back yet
+        self.missed: set[TileKey] = set()  # not in the disk cache: request them (or hatch them offline)
+        self.refetch = False  # set by `refresh`: the next update requests the visible tiles directly
         self.stats = Stats()
         self.board: p.BoardStatus | None = None
         self.last_error: str | None = None
@@ -169,15 +182,26 @@ class TileManager:
     def key(self, level: int, tx: int, ty: int) -> TileKey:
         return TileKey(level, tx, ty, self.max_it, self.flags & p.RESULT_FLAGS)
 
+    def cache_key(self, key: TileKey) -> CacheKey:
+        i = self.info
+        return CacheKey(i.arith_id, i.w, i.f, step(i.f, key.level), key.tx, key.ty, TILE, TILE, key.max_it,
+                        key.flags)
+
+    @property
+    def idle(self) -> bool:
+        """Nothing in flight and nothing being looked up."""
+        return not self.pending and not self.loading
+
     def set_render(self, max_it: int, flags: int):
         self.max_it = max(1, min(max_it, self.info.max_max_it))
         self.flags = flags & p.KNOWN_FLAGS & self.info.features
         self.failed.clear()
 
     def refresh(self):
-        """Drop every tile, so the visible ones are requested again."""
+        """Drop every tile; the visible ones are requested again from the server, not the cache."""
         self.store.clear()
         self.failed.clear()
+        self.refetch = True
         self.paused = False
 
     def stop(self):
@@ -194,9 +218,16 @@ class TileManager:
 
     def update(self, view: View, width: int, height: int):
         self._receive()
+        self._receive_cache()
         if self.closed:
             return
         current = [self.key(view.level, tx, ty) for tx, ty in visible_tiles(view, width, height)]
+        if self.refetch and not self.offline:
+            self.missed.update(current)
+            if self.cache:
+                self.cache.drop([self.cache_key(k) for k in current if k in self.loading])
+            self.loading.difference_update(current)
+        self.refetch = False
         self.complete = all(k in self.store for k in current)
         wanted = current if self.complete else self._previews(view, width, height) + current
         wanted_set = set(wanted)
@@ -205,19 +236,31 @@ class TileManager:
         if stale:
             self.conn.cancel(stale)
             self.cancelled.update(stale)
+        unwanted = [k for k in self.loading if k not in wanted_set]
+        if unwanted:
+            self.cache.drop([self.cache_key(k) for k in unwanted])
+            self.loading.difference_update(unwanted)
+        if len(self.missed) > 20000:
+            self.missed.intersection_update(wanted_set)
         if self.paused:
             return
 
+        slots = 0 if self.offline else self.conn.free_slots
         for key in wanted:
-            if key in self.store or key in self.requested or key in self.failed:
+            if key in self.store or key in self.requested or key in self.failed or key in self.loading:
                 continue
             x0, y0, s = tile_origin(self.info.f, key.level, key.tx, key.ty)
             if not p.TileReq(1, TILE, TILE, key.max_it, self.flags, x0, y0, s).fits(self.info.w):
                 self.store.put(key, *synth_tile(self.info.f, x0, y0, s), iterations=0)
                 self.stats.synthesized += 1
                 continue
-            if self.conn.free_slots <= 0:
-                break
+            if self.cache and not self.bypass and key not in self.missed:
+                self.cache.lookup(self.cache_key(key))
+                self.loading.add(key)
+                continue
+            if slots <= 0:
+                continue  # lookups of later tiles still go out
+            slots -= 1
             rid = self.conn.request(x0, y0, s, key.max_it, flags=self.flags)
             self.pending[rid] = key
             self.requested[key] = rid
@@ -248,6 +291,9 @@ class TileManager:
                 self.requested.pop(key, None)
                 if r.complete:
                     self.store.put(key, r.counts, r.zz, r.iterations)
+                    self.missed.discard(key)
+                    if self.cache:
+                        self.cache.store(self.cache_key(key), r.counts, r.zz, r.iterations)
                     s = self.stats
                     s.received += 1
                     s.iterations += r.iterations
@@ -269,6 +315,39 @@ class TileManager:
             elif isinstance(r, Closed):
                 self.closed = r.reason
                 return
+
+    def _receive_cache(self):
+        if not self.cache:
+            return
+        i = self.info
+        while True:
+            try:
+                ck, tile = self.cache.results.get_nowait()
+            except Exception:
+                return
+            if (ck.arith_id, ck.w, ck.f) != (i.arith_id, i.w, i.f):
+                continue  # from an earlier connection sharing the cache
+            level = self.level_of(ck.step)
+            if level is None:
+                continue
+            key = TileKey(level, ck.tx, ck.ty, ck.max_it, ck.flags)
+            self.loading.discard(key)
+            if tile is None:
+                self.missed.add(key)
+            elif key not in self.store:
+                self.store.put(key, tile.counts, tile.zz, tile.iterations)
+                self.stats.from_cache += 1
+
+    def level_of(self, s: int) -> int | None:
+        """The level whose step is s (steps fall strictly with the level in the usable range)."""
+        return self._levels.get(s)
+
+    def missing(self, view: View, width: int, height: int) -> list[tuple[int, int]]:
+        """Offline: the screen positions (left, top) of current tiles the cache doesn't have."""
+        if not self.offline:
+            return []
+        return [(TILE * tx - view.x0, TILE * ty - view.y0) for tx, ty in visible_tiles(view, width, height)
+                if self.key(view.level, tx, ty) in self.missed]
 
     # ------------------------------------------------------------------------------- drawing
 

@@ -10,6 +10,7 @@ through `mandelbrotd` on the HPS, or on a simulated server. Design, protocol and
 uv sync --extra gui                                    # once; the extra installs imgui-bundle and moderngl
 uv run python -m mandelbrot.app --host 192.168.10.10   # the board (mandelbrotd must be running there)
 uv run python -m mandelbrot.app --sim                  # a simulated server in this process, no board
+uv run python -m mandelbrot.app --offline              # browse the disk cache, no server
 uv run python -m mandelbrot.app                        # choose the server in the Connection panel
 ```
 
@@ -24,6 +25,8 @@ Options:
 | `--colouring`, `--palette` | `smooth`, `ultra` | colouring mode, and a preset or saved palette |
 | `--size` | 1280x800 | window size |
 | `--screenshot FILE`, `--wait S` | none, 30 | save a PNG once the view is complete, then exit |
+| `--offline [ARITH_ID]` | the last server | no server: show cached tiles, hatch the missing ones |
+| `--cache-dir`, `--cache-limit GB`, `--no-cache` | `~/.cache/mandelbrot-fpga/tiles`, 4 | the disk cache |
 
 ## Controls
 
@@ -32,7 +35,8 @@ Options:
 - Keys: `+` / `-` double or halve max_it, `R` requests the screen again (bypassing the cache),
   `Esc` stops requesting until the next move, `Backspace` goes back one view, `H` hides the panels.
 - Panels:
-  - Connection: the server, simulated or host/port, and what the server reports (W, F, cores).
+  - Connection: board (host/port), simulated server or offline (the cache of an earlier server,
+    by arithmetic id), and what the server reports (W, F, cores).
   - View: level, magnification, a centre to type in (Go), Home, Back, max_it.
   - Colouring: the mode (escape, smooth, log-smooth, histogram, hsv, lch); palette and gradient
     editor (Edit); density, offset, cycling (animates the offset), gamma; the colours of interior
@@ -40,6 +44,9 @@ Options:
     R² = 4 (the 21-bit design) they show bands. Saved palettes are in
     `~/.config/mandelbrot-fpga/palettes.json`.
   - Statistics: tile rates, and the board's temperatures and fan speed.
+  - Cache: size, hits and misses; bypass (request every tile, still write the cache); offline / cache
+    only; clear everything or the current arithmetic id. Tiles are only shown as results of the
+    build (arithmetic id) that computed them.
   - Help.
 
 ## Tests
@@ -48,6 +55,11 @@ Options:
 uv sync && uv run pytest -q                                          # no board needed
 MANDELBROT_BOARD=192.168.10.10 uv run pytest -q tests/test_board.py  # against mandelbrotd
 ```
+
+Modules in `mandelbrot/`: `protocol.py` (wire format), `net.py` (client, `OfflineConnection`),
+`sim_server.py`, `view.py` (lattice maths), `tiles.py` (tile manager, in-memory LRU), `cache.py`
+(disk cache), `colouring.py`, `gl_view.py` (textures, shader), `app.py` (viewer), `headless.py`
+(render to PNG from the shell).
 
 Other directories: `tools/precision_study.py` (the phase 2 error study) and `bench/` (a C++
 reference benchmark).

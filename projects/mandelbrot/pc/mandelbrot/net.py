@@ -5,6 +5,7 @@ thread sends what the caller queued. The caller (the UI thread) never blocks on 
 """
 
 import queue
+import dataclasses
 import socket
 import threading
 from dataclasses import dataclass
@@ -168,3 +169,33 @@ class Connection:
     def _done(self, request_id: int):
         with self._lock:
             self._in_flight.discard(request_id)
+
+
+class OfflineConnection:
+    """Stands in for a server while browsing the disk cache: the INFO saved by an earlier connection,
+    and no requests (`free_slots` is always 0)."""
+
+    def __init__(self, info: p.Info):
+        self.info = dataclasses.replace(info, features=info.features & ~p.FEATURE_BOARD_STATUS)
+        self.results: queue.Queue = queue.Queue()
+
+    in_flight = 0
+    free_slots = 0
+
+    def request(self, *args, **kwargs) -> int:
+        raise ServerError("offline: no requests")
+
+    def request_status(self):
+        raise ServerError("offline: no board status")
+
+    def cancel(self, request_ids=()):
+        pass
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        pass

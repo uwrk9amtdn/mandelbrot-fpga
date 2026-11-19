@@ -22,6 +22,7 @@ Options:
 | `--sim`, `--sim-format` | `wide` | simulated server; `wide` is W=64/F=54, `board` is the phase 1 W=21/F=16 |
 | `--re`, `--im`, `--level` | -0.75, 0, whole set | starting view |
 | `--max-it` | 256 | iteration limit |
+| `--no-checks` | | don't request the periodicity check and cardioid test (requested by default when the server has them) |
 | `--colouring`, `--palette` | `smooth`, `ultra` | colouring mode, and a preset or saved palette |
 | `--size` | 1280x800 | window size |
 | `--screenshot FILE`, `--wait S` | none, 30 | save a PNG once the view is complete, then exit |
@@ -37,7 +38,8 @@ Options:
 - Panels:
   - Connection: board (host/port), simulated server or offline (the cache of an earlier server,
     by arithmetic id), and what the server reports (W, F, cores).
-  - View: level, magnification, a centre to type in (Go), Home, Back, max_it.
+  - View: level, magnification, a centre to type in (Go), Home, Back, max_it, and the hardware
+    checks (periodicity, cardioid/bulb; exact, so the picture is the same, only faster).
   - Colouring: the mode (escape, smooth, log-smooth, histogram, hsv, lch); palette and gradient
     editor (Edit); density, offset, cycling (animates the offset), gamma; the colours of interior
     and of unresolved (max_it reached) pixels. Smooth values need the wide formats' R² = 256; at

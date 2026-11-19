@@ -406,7 +406,8 @@ level above and below around the cursor.
      of proven-interior pixels (decided with the user 2026-11-19, see "Reuse at another max_it").
 6. **Tools:** statistics, bookmarks, export, high-resolution render, the exact mode and "verify
    tile" (both sides computed, bypassing the cache).
-7. **Phase 3 features:** Mariani-Silver in `tiles.py`, the hardware flags in the UI.
+7. **Phase 3 features:** Mariani-Silver in `tiles.py`, the hardware flags in the UI (done early,
+   2026-11-19: two checkboxes in the View panel, on when INFO reports them; `--no-checks`).
 
 ## Open questions
 

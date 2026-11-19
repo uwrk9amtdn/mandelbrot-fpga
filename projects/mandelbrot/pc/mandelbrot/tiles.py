@@ -161,7 +161,7 @@ class TileManager:
         self.info = conn.info
         self.store = store
         self.max_it = max_it
-        self.flags = flags & p.KNOWN_FLAGS
+        self.flags = flags & p.KNOWN_FLAGS & self.info.features
         self.lo = min_level(self.info.w, self.info.f, self.info.bailout_r2)
         self.hi = max_level(self.info.f)
         self._levels = {step(self.info.f, level): level for level in range(self.lo, self.hi + 1)}

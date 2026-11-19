@@ -34,6 +34,7 @@ from .net import Connection, OfflineConnection
 from .tiles import TileManager, TileStore
 from .view import TILE, View, step
 
+CHECKS = p.FLAG_PERIODICITY | p.FLAG_CARDIOID  # the hardware checks, requested when the server has them
 SIM_FORMATS = {  # name -> (W, F, R^2)
     "wide": (64, 54, 256),  # the phase 2 format, smooth colouring works
     "board": (21, 16, 4),  # the phase 1 hardware
@@ -149,7 +150,8 @@ class App:
         offline = isinstance(self.conn, OfflineConnection)
         if self.cache and not offline:
             self.cache.save_info(self.conn.info)
-        self.mgr = TileManager(self.conn, self.store, self.max_it, cache=self.cache, offline=offline)
+        checks = 0 if self.args.no_checks else self.conn.info.features & CHECKS
+        self.mgr = TileManager(self.conn, self.store, self.max_it, checks, cache=self.cache, offline=offline)
         self.max_it = self.mgr.max_it
         self.history.clear()
         self.view = self.initial_view()
@@ -469,6 +471,16 @@ class App:
         imgui.same_line()
         if imgui.button("/2"):
             self._set_max_it(self.max_it // 2)
+        for flag, label in ((p.FLAG_PERIODICITY, "periodicity check"), (p.FLAG_CARDIOID, "cardioid/bulb test")):
+            imgui.begin_disabled(not info.features & flag)
+            changed, on = imgui.checkbox(label, bool(self.mgr.flags & flag))
+            imgui.end_disabled()
+            if imgui.is_item_hovered(imgui.HoveredFlags_.allow_when_disabled):
+                imgui.set_tooltip("proves pixels interior early (exact: same picture, fewer iterations)"
+                                  if info.features & flag else "this server doesn't have it")
+            if changed:
+                self.mgr.set_render(self.max_it, self.mgr.flags ^ flag)
+                self.mgr.resume()
         if self.mgr.paused:
             imgui.text_colored(imgui.ImVec4(1, 0.8, 0.3, 1), "stopped (move or press R to resume)")
 
@@ -680,6 +692,8 @@ def main():
     ap.add_argument("--im", default="0", help="centre, imaginary part")
     ap.add_argument("--level", type=int, help="zoom level (default: the whole set)")
     ap.add_argument("--max-it", type=int, default=256)
+    ap.add_argument("--no-checks", action="store_true",
+                    help="don't request the periodicity check and cardioid test (on when the server has them)")
     ap.add_argument("--colouring", choices=MODES, default="smooth")
     ap.add_argument("--palette", default="ultra", help="a preset or a saved palette")
     ap.add_argument("--size", default="1280x800", help="window size, WxH")

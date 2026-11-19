@@ -6,12 +6,17 @@ simulated server and the tests; `hps/protocol.h` will hold the same layouts in C
 Every message is a 16-byte header followed by `length` payload bytes.
 """
 
+from __future__ import annotations
+
 import struct
 from dataclasses import dataclass
 from enum import IntEnum
 
-import lz4.block
-import numpy as np
+try:
+    import lz4.block
+    import numpy as np
+except ImportError:  # the board's Python has neither: the message layer works without them
+    lz4 = np = None  # (tools/bench_views.py runs there); Tile.planes and encode_planes need them
 
 VERSION = 1
 PORT = 5150

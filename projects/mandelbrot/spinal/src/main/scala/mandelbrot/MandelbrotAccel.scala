@@ -19,7 +19,7 @@ object AccelRegs {
 
   val ID               = 0x000
   val VERSION          = 0x004
-  val CAPS             = 0x008 // 7:0 nCores, 15:8 W, 20:16 I, 31:24 job contexts (the queue depth)
+  val CAPS             = 0x008 // 7:0 nCores, 15:8 W, 20:16 I, 23:21 the FLAGS bits implemented, 31:24 job contexts
   val ARITH_ID         = 0x00C
   val CONTROL          = 0x010 // bit 0 push the job, bit 1 abort all, bit 8 IRQ enable (every write sets it)
   val STATUS           = 0x014 // bit 0 busy, bit 1 DONE FIFO not empty (the interrupt)
@@ -30,7 +30,9 @@ object AccelRegs {
   val STEP             = 0x040
   val SIZE             = 0x050 // 15:0 width, 31:16 height, 1..256 each
   val MAX_IT           = 0x054
-  val FLAGS            = 0x058 // nothing implemented yet
+  val FLAGS            = 0x058 // bit 0 periodicity check (not yet), bit 1 cardioid/bulb test
+  val FLAG_CARDIOID    = 1 << 1
+  val implementedFlags = FLAG_CARDIOID
   val JOB_ID           = 0x05C
   val RESULT_BASE      = 0x060 // 64 bits; only the low 32 are used (the high word must be 0)
   val RESULT_SLOTS     = 0x068
@@ -55,7 +57,7 @@ object AccelRegs {
     val arith =
       if (cfg.wide) s"fpga-wide|w=${cfg.w}|i=${cfg.intBits}|r2=${cfg.r2}|limb=26|k=${cfg.wideParams.droppedDiagonals}"
       else s"fpga-slotcore|w=${cfg.w}|i=${cfg.intBits}|f=${cfg.fracWidth}|r2=4"
-    crc.update(s"$arith|records-v1".getBytes("UTF-8"))
+    crc.update(s"$arith|records-v1|cardioid-g${CardioidCheck.G}-v1".getBytes("UTF-8"))
     crc.getValue
   }
 }
@@ -70,6 +72,7 @@ case class AccelJob(cfg: AccelConfig) extends Bundle {
   val x0, y0, step  = SInt(cfg.w bits)
   val width, height = UInt(9 bits) // 1..256
   val maxIt         = UInt(32 bits)
+  val cardioid      = Bool() // FLAGS bit 1
   val jobId         = UInt(16 bits)
   val base          = UInt(32 bits) // address of the job's result slot
 }
@@ -91,8 +94,11 @@ case class DoneEntry() extends Bundle {
   * DONE FIFO, when every record it issued has been written and acknowledged on AXI.
   *
   * Results: one 64-bit record per pixel at base + 8 * (row * width + col): the u32 count in the
-  * low half (0xFFFFFFFF if the pixel did not escape), the f32 |z|² at escape in the high half
-  * (truncated, 0 if it did not escape). Each record is one AXI write of one beat, with strobes.
+  * low half (0xFFFFFFFF if the pixel did not escape, 0xFFFFFFFE if it was proven interior), the
+  * f32 |z|² at escape in the high half (truncated; 0 if it did not escape, and for the cardioid
+  * test the proof iteration, which is 0). Each record is one AXI write of one beat, with strobes.
+  *
+  * FLAGS bit 1: the cardioid/bulb test (CardioidCheck) between the issuer and the cores.
   */
 class MandelbrotAccel(cfg: AccelConfig) extends Component {
   import cfg._
@@ -183,6 +189,7 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
       c.job.width  := width.resized
       c.job.height := height.resized
       c.job.maxIt  := stMaxIt
+      c.job.cardioid := stFlags(1)
       c.job.jobId  := stJobId
       c.job.base   := resultBase(31 downto 0) + (stSlot << 19).resize(32) // 512 KB slots
       c.aborted    := False
@@ -206,6 +213,7 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
     val active           = RegInit(False)
     val cur              = Reg(UInt(ctxBits bits)) init (0)
     val x, y, x0, step   = Reg(SInt(w bits))
+    val cardioid         = Reg(Bool())
     val col, row         = Reg(UInt(9 bits))
     val lastCol, lastRow = Reg(UInt(9 bits))
     val idx              = Reg(UInt(idxBits bits))
@@ -221,6 +229,7 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
       x0      := j.x0
       y       := j.y0
       step    := j.step
+      cardioid := j.cardioid
       col     := 0
       row     := 0
       idx     := 0
@@ -228,11 +237,13 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
       lastRow := j.height - 1
     }
 
-    val out = Stream(CorePixel(cfg))
-    out.valid := active && !curAborted
-    out.x     := x
-    out.y     := y
-    out.tag   := cur.asBits ## idx.asBits
+    val out = Stream(CheckIn(cfg))
+    out.valid       := active && !curAborted
+    out.px.x        := x
+    out.px.y        := y
+    out.px.tag      := cur.asBits ## idx.asBits
+    out.px.interior := False
+    out.test        := cardioid
 
     val endOfRow = col === lastCol
     val finished = (out.fire && endOfRow && row === lastRow) || (active && curAborted)
@@ -299,7 +310,9 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
     in.ready := outs.map(_.ready).orR
     for ((o, g) <- outs.zip(groups)) dispatch(o.s2mPipe().m2sPipe(), g)
   }
-  dispatch(issuer.out.m2sPipe(), cores.map(_.io.s))
+  val check = new CardioidCheck(cfg)
+  check.io.s << issuer.out
+  dispatch(check.io.m.m2sPipe(), cores.map(_.io.s))
 
   def collect(ins: Seq[Stream[CoreResult]]): Stream[CoreResult] =
     if (ins.size == 1) ins.head
@@ -335,7 +348,7 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
   val normalized = results.throwWhen(results.dropped).map { r =>
     val o = Normalize()
     o.addr  := jobs(r.ctx).base + (r.idx << 3).resize(32)
-    o.count := Mux(r.escaped, r.count, U(BigInt(0xFFFFFFFFL), 32 bits))
+    o.count := Mux(r.escaped, r.count, Mux(r.interior, U(BigInt(0xFFFFFFFEL), 32 bits), U(BigInt(0xFFFFFFFFL), 32 bits)))
     o.mag   := r.mag
     o.top   := OHToUInt(OHMasking.first(r.mag.asBits.reversed).reversed)
     o.ctx   := r.ctx
@@ -394,7 +407,7 @@ class MandelbrotAccel(cfg: AccelConfig) extends Component {
   // ---------------------------------------------------------------------------------- read-only registers
   f.read(B(idValue, 32 bits), ID)
   f.read(B(version, 32 bits), VERSION)
-  f.read(B((BigInt(nCtx) << 24) | (intBits << 16) | (w << 8) | nCores, 32 bits), CAPS)
+  f.read(B((BigInt(nCtx) << 24) | (implementedFlags << 21) | (intBits << 16) | (w << 8) | nCores, 32 bits), CAPS)
   f.read(B(arithId(cfg), 32 bits), ARITH_ID)
   f.read(head.valid ## busy, STATUS)
   f.read(done.io.occupancy.resize(16).asBits ## CountOne(~validBits).resize(16).asBits, QUEUE)

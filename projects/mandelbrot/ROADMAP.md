@@ -55,7 +55,7 @@ Status: phase 1 in progress (PC application milestone 1 is done, see
   |---|---|---|---|
   | 0x000 | ID | RO | 'MAND' |
   | 0x004 | VERSION | RO | |
-  | 0x008 | CAPS | RO | bits 7:0 nCores, 15:8 W (total bits), 20:16 I (integer bits), 23:21 feature bits (periodicity, cardioid; none yet), 31:24 job queue depth |
+  | 0x008 | CAPS | RO | bits 7:0 nCores, 15:8 W (total bits), 20:16 I (integer bits), 23:21 the FLAGS bits implemented (bit 21 periodicity, 22 cardioid/bulb test), 31:24 job queue depth |
   | 0x00C | ARITH_ID | RO | hash of the configuration that changes result bits (W, I, guard bits, bailout, format); used as part of the PC's tile cache key |
   | 0x010 | CONTROL | WO | bit 0 push the job registers into the job queue (ignored when the queue is full), bit 1 abort all jobs, bit 8 IRQ enable (every write sets or clears it) |
   | 0x014 | STATUS | RO | bit 0 busy (a job is queued or running), bit 1 DONE FIFO not empty (this is the interrupt). Errors are reported per job, in DONE. |
@@ -66,7 +66,7 @@ Status: phase 1 in progress (PC application milestone 1 is done, see
   | 0x040-0x04C | STEP[4] | RW | distance between pixels |
   | 0x050 | WIDTH, HEIGHT | RW | tile size in pixels, 1..256 each (16 + 16 bits). Tiles are full size on a global grid (see [PC_APP_PLAN.md](PC_APP_PLAN.md)); smaller ones are used for Mariani-Silver borders. |
   | 0x054 | MAX_IT | RW | 32 bits, at most 0xFFFFFFFD (the two values above are the interior codes) |
-  | 0x058 | FLAGS | RW | periodicity check, cardioid/bulb test |
+  | 0x058 | FLAGS | RW | bit 0 periodicity check, bit 1 cardioid/bulb test (the protocol's request flags 1:0) |
   | 0x05C | JOB_ID | RW | 16-bit id chosen by `mandelbrotd`. It comes back in DONE, and it is what ABORT names. |
   | 0x060-0x064 | RESULT_BASE | RW | physical address of the result area in HPS memory (64 bits, low word first). Set once by `mandelbrotd` at start. |
   | 0x068 | RESULT_SLOTS | RW | number of 512 KB slots in the result area. Set once at start. |
@@ -459,8 +459,64 @@ colouring needs the larger bailout radius of the wide format; LZ4, UIO and the f
 ### Phase 3: algorithmic speedups
 
 - Periodicity check (FPGA), cardioid/bulb test (FPGA), Mariani-Silver (PC).
+- **Cardioid/bulb test (step 1).** `CardioidCheck` (`Cardioid.scala`) sits between the issuer and the
+  dispatch tree, 5 pipeline stages, 4 multipliers of 27x27 bits. A pixel it proves goes to a core with
+  a flag and finishes on its first pass (count 0xFFFFFFFE, proof iteration 0); the cores have far more
+  slots than the issuer's one pixel per cycle, so this costs nothing and needs no second result path.
+  The exact definition, shared by `fixed.py` (`cardioid_bulb`), `CardioidCheck.inside` and the RTL:
+  - X, Y: c truncated to G = 24 fraction bits (floor). Only -1.25 <= X < 0.5, |Y| < 0.75 is tested.
+  - Cardioid: a = X - 1/4, Q = floor((a² + Y²) / 2^G), S = Q + a; interior if 4QS - Y² <= -2^32
+    (units of 2^-2G, so 4 · (-2^-18)).
+  - Bulb: (X + 1)² + Y² <= 2^44 - 2^27 (1/16 - 2^-21).
+  - Why the margins are enough: with F(x, y) = q(q + x - 1/4) - y²/4, q = (x - 1/4)² + y², the exact
+    test is F <= 0. In the tested range |∂F/∂x| < 24.2 and |∂F/∂y| < 11.1, so truncating x and y
+    (each by < 2^-24) changes F by < 35.3 · 2^-24, and truncating q (by < 2^-24) changes q(q + a) by
+    < 7.2 · 2^-24: 42.5 · 2^-24 < 2^-18.4 in all. The bulb's sum changes by < (2·1.5 + 2·0.75) · 2^-24
+    < 2^-21.8. `tests/test_fixed.py` checks 40 000 points near both boundaries against the exact
+    rational tests.
+  - It changes the arithmetic id ("cardioid-g24-v1"), so tiles of earlier builds don't mix with it.
 - Benchmark views (shallow, a seahorse valley spiral, a deep zoom, an interior-heavy view): record
   iterations/s and frame times before and after each feature.
+
+**Baseline before phase 3 (2026-11-19), W = 64, 12 cores, no flags.** `pc/tools/bench_views.py`,
+1920x1080, run on the board against `mandelbrotd` on localhost (only the standard library, so it
+runs there; `--help` says how), best of 2:
+
+| view | level | max_it | tiles | it/px | wall s | Mpx/s | G it/s | FPGA busy | bound |
+|---|---|---|---|---|---|---|---|---|---|
+| link (all pixels escape at n = 1) | 29 | 256 | 40 | 1 | 0.19 | 14.0 | 0.01 | 1 % | transport, 112 MB/s |
+| whole set | 29 | 256 | 48 | 52 | 0.23 | 13.5 | 0.70 | 32 % | transport |
+| seahorse spiral | 60 | 4096 | 45 | 1034 | 1.32 | 2.2 | 2.32 | 98 % | compute |
+| deep (7e-12 per pixel) | 138 | 10000 | 45 | 1069 | 1.34 | 2.2 | 2.36 | 100 % | compute |
+| interior (main cardioid) | 36 | 4096 | 54 | 3716 | 5.55 | 0.6 | 2.37 | 100 % | compute |
+
+- The cores reach their peak (12 x 198 MHz = 2.38 G it/s) whenever there is enough work per pixel;
+  the low utilisation seen with `accel_test.py bench` at max_it 256 does not show up here, because
+  the transport limits first.
+- Raw tiles cap `mandelbrotd` at 14 M pixels/s (112 MB/s, about what Gigabit Ethernet carries), so
+  shallow views at low max_it are transport-bound: LZ4 in `mandelbrotd` helps there, and more as
+  phase 3 makes pixels cheaper.
+- The interior view is what the cardioid test and the periodicity check should collapse.
+**Cardioid/bulb test on the board (2026-11-19), same views, `--flags 2`.** Built at W = 64: 184
+DSP blocks, 60 % ALMs, core clock slack +0.54 ns at 198 MHz (Fmax 221 MHz). `accel_test.py check`
+and `tests/test_board.py` (with two cardioid tiles) match the model bit for bit.
+
+| view | it/px | wall s | Mpx/s | G it/s | FPGA busy | bound | vs baseline |
+|---|---|---|---|---|---|---|---|
+| link | 1 | 0.15 | 18.0 | 0.02 | 1 % | transport | (noise) |
+| whole set | 10.5 | 0.17 | 18.1 | 0.19 | 8 % | transport | 1.4x faster, 5x fewer iterations |
+| seahorse spiral | 465 | 0.63 | 4.7 | 2.19 | 93 % | compute | 2.1x |
+| deep | 1069 | 1.33 | 2.2 | 2.37 | 100 % | compute | 1.0x (no pixel in the cardioid) |
+| interior | 24.7 | 0.20 | 17.5 | 0.43 | 19 % | transport | 28x |
+
+- The interior view is now transport-bound (LZ4 would help it). The deep view is unchanged: how much
+  of its time is pixels that reach max_it (what the periodicity check, step 2, can save) is still to
+  be measured.
+
+- The development PC is remote from the board: Ethernet goes through Tailscale (80 ms round trip,
+  34 Mbit/s from the board by iperf3), JTAG and the console through usbip. The viewer gets about
+  0.5 M pixels/s there whatever the FPGA does, which makes LZ4 and the PC's disk cache matter more.
+  Benchmarks run on the board.
 
 ### Phase 4: perturbation, beyond 128 bits and much faster at depth
 

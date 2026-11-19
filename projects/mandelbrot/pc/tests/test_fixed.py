@@ -1,12 +1,14 @@
 """The bit-exact model of the wide arithmetic (fixed.py)."""
 
+import math
 import random
 import struct
+from fractions import Fraction
 
 import numpy as np
 import pytest
 
-from mandelbrot.fixed import LIMB, UNRESOLVED, WideFormat, wrap
+from mandelbrot.fixed import LIMB, UNRESOLVED, WideFormat, cardioid_bulb, wrap
 
 
 @pytest.mark.parametrize("w,products", [(64, 5), (96, 8), (128, 11)])
@@ -69,3 +71,53 @@ def test_f32_of_mag():
         exact = mag / 2**fm.f
         assert got <= exact and (exact - got) / exact < 2**-23  # truncated to 24 significant bits
     assert np.float32(fm.mag_to_f32_bits(0)) == 0
+
+
+# --- cardioid/bulb test ---------------------------------------------------------------------------
+
+
+
+def exact_inside(x: Fraction, y: Fraction) -> bool:
+    q = (x - Fraction(1, 4)) ** 2 + y * y
+    return q * (q + x - Fraction(1, 4)) <= y * y / 4 or (x + 1) ** 2 + y * y <= Fraction(1, 16)
+
+
+def boundary_points(n: int, rng: random.Random):
+    """Points within 3e-5 of the cardioid's and the bulb's boundaries."""
+    for _ in range(n):
+        t = rng.uniform(-math.pi, math.pi)
+        if rng.random() < 0.7:  # cardioid: c = e^it/2 - e^2it/4
+            bx, by = math.cos(t) / 2 - math.cos(2 * t) / 4, math.sin(t) / 2 - math.sin(2 * t) / 4
+        else:  # bulb: c = -1 + e^it/4
+            bx, by = -1 + math.cos(t) / 4, math.sin(t) / 4
+        d = rng.uniform(-3e-5, 3e-5)
+        yield bx + d * math.cos(t), by + d * math.sin(t)
+
+
+@pytest.mark.parametrize("f_bits", [16, 54, 118])
+def test_cardioid_bulb_never_wrong(f_bits):
+    rng = random.Random(f_bits)
+    claimed = 0
+    for bx, by in list(boundary_points(20000, rng)) + [(rng.uniform(-2, 1), rng.uniform(-1.2, 1.2))
+                                                        for _ in range(20000)]:
+        x = round(bx * 2**f_bits) + rng.randrange(-8, 9)
+        y = round(by * 2**f_bits) + rng.randrange(-8, 9)
+        if cardioid_bulb(x, y, f_bits):
+            claimed += 1
+            assert exact_inside(Fraction(x, 2**f_bits), Fraction(y, 2**f_bits)), (f_bits, x, y)
+    assert claimed > 8000  # it does claim most interior points
+
+
+def test_cardioid_bulb_margin_is_small():
+    """Interior points further than 1e-4 from the boundary are all claimed."""
+    rng = random.Random(1)
+    for _ in range(5000):
+        t = rng.uniform(-math.pi, math.pi)
+        r = rng.uniform(0, 0.999)  # towards the origin, which is inside
+        bx, by = math.cos(t) / 2 - math.cos(2 * t) / 4, math.sin(t) / 2 - math.sin(2 * t) / 4
+        x, y = Fraction(bx) * Fraction(r), Fraction(by) * Fraction(r)
+        fx, fy = round(x * 2**54), round(y * 2**54)
+        X, Y = Fraction(fx, 2**54), Fraction(fy, 2**54)
+        q = (X - Fraction(1, 4)) ** 2 + Y * Y
+        if q * (q + X - Fraction(1, 4)) - Y * Y / 4 < -Fraction(1, 10**4):
+            assert cardioid_bulb(fx, fy, 54)

@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from mandelbrot import protocol as p
-from mandelbrot.fixed import WideFormat
+from mandelbrot.fixed import WideFormat, cardioid_bulb
 from mandelbrot.net import Connection, ErrorResult, TileResult
 
 HOST = os.environ.get("MANDELBROT_BOARD")
@@ -77,33 +77,47 @@ def test_info(conn):
     formats = {21: (16, 4), 64: (54, 256), 96: (86, 256), 128: (118, 256)}  # W -> F, R^2
     assert (info.version, info.max_in_flight) == (1, 8)
     assert formats[info.w] == (info.f, info.bailout_r2)
-    assert info.features == p.FEATURE_BOARD_STATUS
+    assert info.features & p.FEATURE_BOARD_STATUS
+    assert not info.features & ~(p.FEATURE_BOARD_STATUS | p.FLAG_PERIODICITY | p.FLAG_CARDIOID)
     assert 150_000 < info.clock_khz < 250_000
     print(f"\nINFO: {info}")
 
 
-@pytest.mark.parametrize("name,re0,im0,pitch,width,height,max_it", [
-    ("whole set", -2.0, 1.25, 2.5 / 128, 160, 128, 300),
-    ("boundary, deep", -0.7454, 0.1130, 0.00002, 64, 48, 2000),
-    ("far outside", -15.9, 15.9, 0.4, 64, 64, 50),
-    ("one pixel", 0.25, 0.0, 0.001, 1, 1, 5000),
-    ("full tile", -1.0, 0.5, 1 / 256, 256, 256, 64),
+CARD = p.FLAG_CARDIOID
+
+
+@pytest.mark.parametrize("name,re0,im0,pitch,width,height,max_it,flags", [
+    ("whole set", -2.0, 1.25, 2.5 / 128, 160, 128, 300, 0),
+    ("boundary, deep", -0.7454, 0.1130, 0.00002, 64, 48, 2000, 0),
+    ("far outside", -15.9, 15.9, 0.4, 64, 64, 50, 0),
+    ("one pixel", 0.25, 0.0, 0.001, 1, 1, 5000, 0),
+    ("full tile", -1.0, 0.5, 1 / 256, 256, 256, 64, 0),
+    ("cardioid test", -1.4, 0.8, 0.1, 20, 17, 300, CARD),
+    ("cardioid edge", 0.2499, 0.5001, 0.000004, 64, 64, 1000, CARD),
 ])
-def test_tile_is_exact(conn, name, re0, im0, pitch, width, height, max_it):
+def test_tile_is_exact(conn, name, re0, im0, pitch, width, height, max_it, flags):
     w, f = conn.info.w, conn.info.f
+    if flags & ~conn.info.features:
+        pytest.skip("this bitstream doesn't implement the flag")
     if w > 21:  # the wide model is pure Python: smaller tiles, fewer iterations
         width, height, max_it = min(width, 40), min(height, 24), min(max_it, 600)
     x0, y0, step = round(re0 * 2**f), round(im0 * 2**f), max(1, round(pitch * 2**f))
-    rid = conn.request(x0, y0, step, max_it, width, height)
+    rid = conn.request(x0, y0, step, max_it, width, height, flags)
     r = get(conn, 60)
     assert isinstance(r, TileResult) and r.request_id == rid and r.complete
     if w > 21:
         counts, zz = wide_tile(w, x0, y0, step, width, height, max_it)
     else:
         counts, zz = exact_tile(w, f, x0, y0, step, width, height, max_it)
+    if flags & CARD:
+        inside = np.array([[cardioid_bulb(x0 + i * step, y0 - j * step, f) for i in range(width)]
+                           for j in range(height)])
+        counts[inside], zz[inside] = p.INTERIOR, 0  # proof iteration k = 0
+        assert inside.any() and not inside.all()
     assert np.array_equal(r.counts, counts), f"{(r.counts != counts).sum()} counts differ"
     assert np.array_equal(r.zz.view(np.uint32), zz.view(np.uint32)), f"{(r.zz != zz).sum()} |z|^2 differ"
-    want_it = int(np.where(counts == p.UNRESOLVED, max_it, counts).sum(dtype=np.int64))
+    want_it = int(np.where(counts == p.UNRESOLVED, max_it, np.where(counts == p.INTERIOR, 0, counts))
+                  .sum(dtype=np.int64))
     assert r.iterations == want_it
 
 

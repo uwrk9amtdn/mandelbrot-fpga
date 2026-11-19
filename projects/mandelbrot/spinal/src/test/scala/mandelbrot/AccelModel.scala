@@ -5,6 +5,7 @@ object AccelModel {
   import RefModel.wrap
 
   val Unresolved = 0xFFFFFFFFL
+  val Interior   = 0xFFFFFFFEL
 
   /** A pixel's result: (count, |z|² at escape with cfg.magFrac fraction bits). count is the
     * smallest n >= 1 with |z_n|² >= 4, or Unresolved (then |z|² is 0) if there is none up to maxIt.
@@ -35,13 +36,23 @@ object AccelModel {
   }
 
   /** The 64-bit record of a pixel: count in the low half, f32 |z|² in the high half. */
-  def record(cfg: AccelConfig, cx: BigInt, cy: BigInt, maxIt: Long): BigInt = {
+  def record(cfg: AccelConfig, cx: BigInt, cy: BigInt, maxIt: Long, flags: Int = 0): BigInt = {
+    if ((flags & AccelRegs.FLAG_CARDIOID) != 0 && CardioidCheck.inside(cx, cy, cfg.fracWidth)) return BigInt(Interior)
     val (count, mag) = pixel(cfg, cx, cy, maxIt)
     (BigInt(magToFloatBits(cfg, mag)) << 32) | count
   }
 
   /** Records of a tile, row-major: c = (x0 + col * step, y0 - row * step). */
-  def tile(cfg: AccelConfig, x0: BigInt, y0: BigInt, step: BigInt, width: Int, height: Int, maxIt: Long): Seq[BigInt] =
+  def tile(cfg: AccelConfig, x0: BigInt, y0: BigInt, step: BigInt, width: Int, height: Int, maxIt: Long,
+           flags: Int = 0): Seq[BigInt] =
     for (row <- 0 until height; col <- 0 until width)
-      yield record(cfg, wrap(x0 + step * col, cfg.w), wrap(y0 - step * row, cfg.w), maxIt)
+      yield record(cfg, wrap(x0 + step * col, cfg.w), wrap(y0 - step * row, cfg.w), maxIt, flags)
+
+  /** DONE_ITERATIONS of a tile: the counts, max_it for unresolved pixels, 0 for proven ones. */
+  def iterations(records: Seq[BigInt], maxIt: Long): BigInt =
+    records.map(r => (r & 0xFFFFFFFFL).toLong).map {
+      case Unresolved => maxIt
+      case Interior   => 0L
+      case c          => c
+    }.map(BigInt(_)).sum
 }

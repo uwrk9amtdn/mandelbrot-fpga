@@ -63,8 +63,9 @@ abstract class IterationUnit(cfg: AccelConfig) extends Component {
 
 /** A pixel on its way into a core. */
 case class CorePixel(cfg: AccelConfig) extends Bundle {
-  val x, y = SInt(cfg.w bits)
-  val tag  = Bits(cfg.tagBits bits) // job context (high bits) and pixel index
+  val x, y     = SInt(cfg.w bits)
+  val tag      = Bits(cfg.tagBits bits) // job context (high bits) and pixel index
+  val interior = Bool() // proven interior before iterating (CardioidCheck): done after one pass
   def ctx  = tag(cfg.tagBits - 1 downto cfg.idxBits).asUInt
 }
 
@@ -73,8 +74,9 @@ case class CoreResult(cfg: AccelConfig) extends Bundle {
   val tag     = Bits(cfg.tagBits bits)
   val count   = UInt(32 bits) // n of the z_n that escaped, or MAX_IT when none did
   val mag     = UInt(cfg.magBits bits) // |z_n|² at escape (cfg.magFrac fraction bits), else 0
-  val escaped = Bool()
-  val dropped = Bool() // the job was aborted: no result
+  val escaped  = Bool()
+  val interior = Bool() // proven interior (count 0, |z|² 0)
+  val dropped  = Bool() // the job was aborted: no result
   def ctx     = tag(cfg.tagBits - 1 downto cfg.idxBits).asUInt
   def idx     = tag(cfg.idxBits - 1 downto 0).asUInt
 }
@@ -122,7 +124,8 @@ class EscapeIteration(cfg: AccelConfig) extends IterationUnit(cfg) {
   * count + 1 times, because the bailout of z_n is seen one pass later.
   *
   * `maxIt` and `abort` are per job context; a pixel names its context in its tag. Pixels of an
-  * aborted context finish at once, flagged `dropped`.
+  * aborted context finish at once, flagged `dropped`. A pixel proven interior before it came
+  * (`interior`) finishes after its first pass, with count 0.
   */
 class SlotCore(cfg: AccelConfig) extends Component {
   import cfg._
@@ -149,6 +152,7 @@ class SlotCore(cfg: AccelConfig) extends Component {
   val limMem     = lutram(Bool()) // j has reached MAX_IT
   val magMem     = lutram(UInt(magBits bits)) // result of a slot that waits for the output
   val escMem     = lutram(Bool())
+  val intMem     = lutram(Bool()) // proven interior: finishes on its first pass
 
   val busy, waiting = Reg(Bits(n bits)) init (0)
 
@@ -163,7 +167,8 @@ class SlotCore(cfg: AccelConfig) extends Component {
   val isWait  = busy(ptr) && waiting(ptr)
   val running = busy(ptr) && !waiting(ptr)
   val stop    = it.io.mStop
-  val finish  = running && (stop || limMem.readAsync(ptr, writeFirst) || aborted)
+  val proven  = intMem.readAsync(ptr, writeFirst)
+  val finish  = running && (stop || limMem.readAsync(ptr, writeFirst) || aborted || proven)
   val cont    = running && !finish
 
   val res = Stream(CoreResult(cfg))
@@ -171,6 +176,7 @@ class SlotCore(cfg: AccelConfig) extends Component {
   res.tag     := tag
   res.count   := j
   res.dropped := aborted
+  res.interior := proven
   when(isWait) {
     res.mag     := magMem.readAsync(ptr, writeFirst)
     res.escaped := escMem.readAsync(ptr, writeFirst)
@@ -193,6 +199,7 @@ class SlotCore(cfg: AccelConfig) extends Component {
   xMem.write(ptr, io.s.x, enable = load)
   yMem.write(ptr, io.s.y, enable = load)
   tagMem.write(ptr, io.s.tag, enable = load)
+  intMem.write(ptr, io.s.interior, enable = load)
 
   val jNext = j + 1
   jMem.write(ptr, Mux(load, U(0), jNext), enable = load || cont)

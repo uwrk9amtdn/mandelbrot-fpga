@@ -210,12 +210,15 @@ static void setup_accel(void) {
         .version = PROTO_VERSION, .w = w, .f = w - ibits, .n_cores = caps & 0xFF,
         .clock_khz = (uint32_t)((c1 - c0) / (t1 - t0) / 1000 + 0.5),
         .max_tile_width = 256, .max_tile_height = 256, .max_in_flight = SLOTS,
-        .features = FEATURE_BOARD_STATUS, .max_max_it = MAX_MAX_IT,
+        // CAPS 23:21 are the FLAGS bits the bitstream implements (periodicity, cardioid), which are
+        // also the protocol's request flags 1:0. LZ4 is mandelbrotd's own, not implemented yet.
+        .features = FEATURE_BOARD_STATUS | ((caps >> 21) & (FLAG_PERIODICITY | FLAG_CARDIOID)),
+        .max_max_it = MAX_MAX_IT,
         .bailout_r2 = r2 ? r2 : 4, // bitstreams before the R2 register have R^2 = 4
         .arith_id = rd(R_ARITH_ID),
     };
-    LOG("accelerator: %u cores at %.1f MHz, W = %u, F = %u, arithmetic id %#010x; buffer at %#llx",
-        info.n_cores, info.clock_khz / 1000.0, info.w, info.f, info.arith_id,
+    LOG("accelerator: %u cores at %.1f MHz, W = %u, F = %u, features %#x, arithmetic id %#010x; buffer at %#llx",
+        info.n_cores, info.clock_khz / 1000.0, info.w, info.f, info.features, info.arith_id,
         (unsigned long long)buf_phys);
 }
 
@@ -360,7 +363,7 @@ static int on_tile_req(int fd, const uint8_t *p, uint32_t len) {
     }
     wr(R_SIZE, (uint32_t)q.height << 16 | q.width);
     wr(R_MAX_IT, q.max_it);
-    wr(R_FLAGS, 0);
+    wr(R_FLAGS, q.flags & (FLAG_PERIODICITY | FLAG_CARDIOID));
     wr(R_JOB_ID, sl->job_id);
     wr(R_RESULT_SLOT, s);
     wr(R_CONTROL, CTRL_PUSH);

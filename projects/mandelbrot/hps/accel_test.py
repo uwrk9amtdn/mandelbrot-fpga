@@ -26,6 +26,8 @@ X0, Y0, STEP, SIZE, MAX_IT, FLAGS, JOB_ID = 0x20, 0x30, 0x40, 0x50, 0x54, 0x58, 
 RESULT_BASE, RESULT_SLOTS, RESULT_SLOT, DONE, DONE_ITERATIONS = 0x60, 0x68, 0x6C, 0x70, 0x74
 TOTAL_ITERATIONS, TOTAL_CYCLES, TOTAL_PIXELS, BOARD_TEMP, FAN_RPM, R2 = 0x80, 0x88, 0x90, 0x98, 0x9C, 0xA0
 UNRESOLVED = 0xFFFFFFFF
+INTERIOR = 0xFFFFFFFE
+CARDIOID = 1 << 1  # FLAGS
 MAG_FRAC = 22
 
 
@@ -59,12 +61,13 @@ class Accel:
     def fix(self, v):
         return round(v * (1 << self.f))
 
-    def push(self, job_id, slot, x0, y0, step, width, height, max_it):
+    def push(self, job_id, slot, x0, y0, step, width, height, max_it, flags=0):
         for reg, v in ((X0, x0), (Y0, y0), (STEP, step)):  # sign-extended words, low first
             for k in range(self.words):
                 self.wr(reg + 4 * k, (v >> (32 * k)) & 0xFFFFFFFF)
         self.wr(SIZE, (height << 16) | width)
         self.wr(MAX_IT, max_it)
+        self.wr(FLAGS, flags)
         self.wr(JOB_ID, job_id)
         self.wr(RESULT_SLOT, slot)
         self.wr(CONTROL, 1)
@@ -108,17 +111,21 @@ def model_record(w, f, cx, cy, max_it):
 
 
 def model(acc):
-    """record(cx, cy, max_it) for this accelerator's arithmetic."""
+    """record(cx, cy, max_it, flags) for this accelerator's arithmetic."""
+    from fixed import FLAG_CARDIOID, INTERIOR, WideFormat, cardioid_bulb
+
     if acc.wide:
-        from fixed import WideFormat
+        return WideFormat(acc.w, acc.i_bits).record
 
-        fm = WideFormat(acc.w, acc.i_bits)
-        return fm.record
-    return lambda cx, cy, max_it: model_record(acc.w, acc.f, cx, cy, max_it)
+    def record(cx, cy, max_it, flags=0):
+        if flags & FLAG_CARDIOID and cardioid_bulb(cx, cy, acc.f):
+            return INTERIOR
+        return model_record(acc.w, acc.f, cx, cy, max_it)
+    return record
 
 
-def run_job(acc, job_id, slot, x0, y0, step, width, height, max_it, timeout=10.0):
-    acc.push(job_id, slot, x0, y0, step, width, height, max_it)
+def run_job(acc, job_id, slot, x0, y0, step, width, height, max_it, flags=0, timeout=10.0):
+    acc.push(job_id, slot, x0, y0, step, width, height, max_it, flags)
     t = time.monotonic()
     while (d := acc.pop_done()) is None:
         if time.monotonic() - t > timeout:
@@ -140,24 +147,27 @@ def check(acc):
         ("max_it 0", fx(-0.5), fx(0.5), fx(0.1), 8, 8, 0),
         ("one pixel", fx(0.25), 0, 1, 1, 1, 5000),
         ("256 wide", fx(-2.0), fx(0.01), fx(2.5 / 256), 256, 2, 100),
+        ("cardioid test", fx(-1.4), fx(0.8), fx(0.1), 20, 17, 300, CARDIOID),
+        ("cardioid edge", fx(0.2499), fx(0.5001), fx(0.000004), 64, 64, 1000, CARDIOID),
     ]
+    tiles = [t if len(t) == 8 else t + (0,) for t in tiles]
     failed = 0
     if acc.wide:  # the wide model is slow in Python: smaller tiles, fewer iterations
-        tiles = [(n, x0, y0, s, min(wd, 24), min(ht, 16), min(mi, 500)) for n, x0, y0, s, wd, ht, mi in tiles]
-        tiles.append(("deepest level", fx(-0.743643887037151), fx(0.131825904205330), 16, 16, 8, 500))
+        tiles = [(n, x0, y0, s, min(wd, 24), min(ht, 16), min(mi, 500), fl) for n, x0, y0, s, wd, ht, mi, fl in tiles]
+        tiles.append(("deepest level", fx(-0.743643887037151), fx(0.131825904205330), 16, 16, 8, 500, 0))
     else:
         tiles = [t for t in tiles if t[0] != "very far"]  # outside the narrow format
-    for job_id, (name, x0, y0, step, wd, ht, max_it) in enumerate(tiles, start=1):
+    for job_id, (name, x0, y0, step, wd, ht, max_it, flags) in enumerate(tiles, start=1):
         slot = job_id % SLOTS
-        _, status, it = run_job(acc, job_id, slot, x0, y0, step, wd, ht, max_it)
+        _, status, it = run_job(acc, job_id, slot, x0, y0, step, wd, ht, max_it, flags)
         got = acc.records(slot, wd * ht)
         bad = 0
         want_it = 0
         for i, r in enumerate(got):
             cx = wrap(x0 + (i % wd) * step, acc.w)
             cy = wrap(y0 - (i // wd) * step, acc.w)
-            want = record(cx, cy, max_it)
-            want_it += max_it if want == UNRESOLVED else want & 0xFFFFFFFF
+            want = record(cx, cy, max_it, flags)
+            want_it += max_it if want == UNRESOLVED else 0 if want == INTERIOR else want & 0xFFFFFFFF
             if r != want:
                 if bad < 3:
                     print(f"  pixel {i} ({i % wd}, {i // wd}): got {r:#018x}, want {want:#018x}")
@@ -181,7 +191,7 @@ def check(acc):
     return failed == 0
 
 
-def bench(acc, n_tiles=200, max_it=256):
+def bench(acc, n_tiles=200, max_it=256, flags=0):
     """256x256 tiles over the whole set, keeping every slot busy."""
     fx = acc.fix
     step = fx(3.0 / 1024)
@@ -195,7 +205,7 @@ def bench(acc, n_tiles=200, max_it=256):
         while free and sent < n_tiles and (acc.rd(QUEUE) & 0xFFFF):
             slot = free.pop()
             x0, y0 = grid[sent % len(grid)]
-            acc.push(sent & 0xFFFF, slot, x0, y0, step, 256, 256, max_it)
+            acc.push(sent & 0xFFFF, slot, x0, y0, step, 256, 256, max_it, flags)
             in_flight[sent & 0xFFFF] = slot
             sent += 1
         d = acc.pop_done()
@@ -217,12 +227,13 @@ def main():
     ap.add_argument("mode", choices=["check", "bench", "status"])
     ap.add_argument("--tiles", type=int, default=200)
     ap.add_argument("--max-it", type=int, default=256)
+    ap.add_argument("--flags", type=int, default=0, help="bench: FLAGS (2 = cardioid/bulb test)")
     a = ap.parse_args()
     acc = Accel()
     if a.mode == "check":
         raise SystemExit(0 if check(acc) else 1)
     if a.mode == "bench":
-        bench(acc, a.tiles, a.max_it)
+        bench(acc, a.tiles, a.max_it, a.flags)
     t, rpm = acc.rd(BOARD_TEMP), acc.rd(FAN_RPM)
     print(f"FPGA {wrap(t & 0xFFFF, 16)} °C, board {wrap(t >> 16, 16)} °C, fan {rpm & 0xFFFF} RPM"
           f"{'' if rpm >> 31 else ' (not valid)'}")

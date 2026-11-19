@@ -58,10 +58,11 @@ class AccelSim extends AnyFunSuite {
       def fix(v: Double) = BigInt(math.round(v * (1 << cfg.fracWidth)))
       def raw(v: BigInt) = (v & ((BigInt(1) << cfg.w) - 1)).toLong
 
-      case class Job(id: Int, slot: Int, x0: BigInt, y0: BigInt, step: BigInt, width: Int, height: Int, maxIt: Long)
+      case class Job(id: Int, slot: Int, x0: BigInt, y0: BigInt, step: BigInt, width: Int, height: Int, maxIt: Long,
+                     flags: Int = 0)
       def push(j: Job): Unit = {
         write(X0, raw(j.x0)); write(Y0, raw(j.y0)); write(STEP, raw(j.step))
-        write(SIZE, (j.height.toLong << 16) | j.width)
+        write(SIZE, (j.height.toLong << 16) | j.width); write(FLAGS, j.flags)
         write(MAX_IT, j.maxIt); write(JOB_ID, j.id); write(RESULT_SLOT, j.slot)
         write(CONTROL, 1 | (1 << 8))
       }
@@ -75,14 +76,13 @@ class AccelSim extends AnyFunSuite {
       def record(slot: Int, i: Int): BigInt =
         (0 until 8).map(b => BigInt(mem.memory.read(base + slot * cfg.slotSize + 8L * i + b) & 0xFF) << (8 * b)).sum
       def check(j: Job, iterations: BigInt): Unit = {
-        val want = AccelModel.tile(cfg, j.x0, j.y0, j.step, j.width, j.height, j.maxIt)
+        val want = AccelModel.tile(cfg, j.x0, j.y0, j.step, j.width, j.height, j.maxIt, j.flags)
         for ((r, i) <- want.zipWithIndex) assert(record(j.slot, i) == r, s"job ${j.id} pixel $i")
-        val wantIt = want.map(r => (r & 0xFFFFFFFFL).toLong).map(c => if (c == AccelModel.Unresolved) j.maxIt else c).sum
-        assert(iterations == wantIt, s"job ${j.id} iterations")
+        assert(iterations == AccelModel.iterations(want, j.maxIt), s"job ${j.id} iterations")
       }
 
       assert(read(ID) == idValue)
-      assert(read(CAPS) == ((cfg.nCtx.toLong << 24) | (cfg.intBits << 16) | (cfg.w << 8) | cfg.nCores))
+      assert(read(CAPS) == ((cfg.nCtx.toLong << 24) | (implementedFlags << 21) | (cfg.intBits << 16) | (cfg.w << 8) | cfg.nCores))
       assert(read(ARITH_ID) == arithId(cfg))
       write(RESULT_BASE, base)
       write(RESULT_SLOTS, 8)
@@ -98,7 +98,8 @@ class AccelSim extends AnyFunSuite {
         Job(14, 3, fix(-0.1), fix(0.1), fix(0.02), 3, 2, 0), // MAX_IT 0: nothing escapes
         Job(15, 4, fix(0.25), fix(0.0), fix(0.001), 1, 1, 1000), // one pixel
         Job(16, 5, fix(-1.5), fix(0.9), fix(0.07), 33, 3, 40),
-        Job(17, 6, fix(-2.1), fix(-1.0), fix(0.2), 16, 1, 25)
+        Job(17, 6, fix(-2.1), fix(-1.0), fix(0.2), 16, 1, 25),
+        Job(18, 7, fix(-1.4), fix(0.8), fix(0.05), 40, 33, 200, FLAG_CARDIOID) // cardioid, bulb, outside
       )
       var finished = Map[Int, (Int, BigInt)]()
       for (j <- jobs) {

@@ -29,6 +29,37 @@ from functools import cached_property
 
 LIMB = 26  # bits per limb
 UNRESOLVED = 0xFFFFFFFF
+INTERIOR = 0xFFFFFFFE
+FLAG_CARDIOID = 1 << 1
+
+# The cardioid/bulb test (ROADMAP.md, phase 3): coordinates truncated to G fraction bits, products
+# of at most 27 x 27 bits, and margins that cover every rounding, so "interior" is always right.
+G = 24
+CARDIOID_MARGIN = 1 << 32  # 4 * 2^-18 in units of 2^-2G
+BULB_LIMIT = (1 << 44) - (1 << 27)  # 1/16 - 2^-21 in units of 2^-2G
+
+
+def cardioid_bulb(x: int, y: int, f_bits: int) -> bool:
+    """Whether c = (x, y) (units 2^-F) is proven inside the main cardioid or the period-2 bulb.
+
+    X = floor(x * 2^(G-F)), Y likewise, and only -1.25 <= X < 0.5, |Y| < 0.75 is tested.
+      cardioid: a = X - 1/4, Q = floor((a^2 + Y^2) / 2^G), S = Q + a:  4 Q S - Y^2 <= -2^32
+      bulb:     c = X + 1:                                              c^2 + Y^2 <= 2^44 - 2^27
+    (in units of 2^-G for X, Y, a, Q, S and 2^-2G for the products). The exact tests are
+    q (q + x - 1/4) <= y^2 / 4 with q = (x - 1/4)^2 + y^2, and (x + 1)^2 + y^2 <= 1/16; the margins
+    cover the truncation of x, y and q (error bounds in ROADMAP.md).
+    """
+    X = x >> (f_bits - G) if f_bits >= G else x << (G - f_bits)
+    Y = y >> (f_bits - G) if f_bits >= G else y << (G - f_bits)
+    if not (-5 << (G - 2) <= X < 1 << (G - 1) and -(3 << (G - 2)) < Y < 3 << (G - 2)):
+        return False
+    y2 = Y * Y
+    a = X - (1 << (G - 2))
+    q = (a * a + y2) >> G
+    if 4 * q * (q + a) - y2 <= -CARDIOID_MARGIN:
+        return True
+    c = X + (1 << G)
+    return c * c + y2 <= BULB_LIMIT
 
 
 def wrap(v: int, bits: int) -> int:
@@ -113,7 +144,10 @@ class WideFormat:
         mant = mag >> (top - 23) if top >= 23 else mag << (23 - top)
         return ((top - self.f + 127) << 23) | (mant & 0x7FFFFF)
 
-    def record(self, cx: int, cy: int, max_it: int) -> int:
-        """The 64-bit result record: count low, f32 |z|^2 high."""
+    def record(self, cx: int, cy: int, max_it: int, flags: int = 0) -> int:
+        """The 64-bit result record: count low, f32 |z|^2 high (for a proven-interior pixel the
+        iteration of the proof, 0 for the cardioid test)."""
+        if flags & FLAG_CARDIOID and cardioid_bulb(cx, cy, self.f):
+            return INTERIOR
         count, mag = self.pixel(cx, cy, max_it)
         return (self.mag_to_f32_bits(mag) << 32) | count

@@ -22,6 +22,7 @@ from fractions import Fraction
 from pathlib import Path
 
 import moderngl
+import numpy as np
 from imgui_bundle import hello_imgui, imgui
 
 from . import protocol as p
@@ -33,7 +34,7 @@ from .cache import DiskCache
 from .net import Connection, OfflineConnection
 from .tiles import TileManager, TileStore
 from .view import TILE, View, step, tile_origin
-from . import verify
+from . import bookmarks, export, verify
 
 CHECKS = p.FLAG_PERIODICITY | p.FLAG_CARDIOID  # the hardware checks, requested when the server has them
 SIM_FORMATS = {  # name -> (W, F, R^2, exact)
@@ -57,6 +58,21 @@ def decimal(x: Fraction, digits: int) -> str:
     q = round(abs(x) * 10**digits)
     s = str(q).rjust(digits + 1, "0")
     return ("-" if x < 0 and q else "") + s[:-digits] + "." + s[-digits:] if digits else str(q)
+
+
+def screen_shares(arrays: list) -> dict:
+    """Percentages of the pixels in (counts, zz) pairs: escaped, max_it, interior and its two proofs
+    (k = 0: the cardioid/bulb test; k > 0: the periodicity check). Empty if there are none."""
+    n = sum(c.size for c, _ in arrays)
+    if n == 0:
+        return {}
+    unresolved = sum(int((c == p.UNRESOLVED).sum()) for c, _ in arrays)
+    interior = [(c == p.INTERIOR, z.view(np.uint32)) for c, z in arrays]
+    period = sum(int((i & (k > 0)).sum()) for i, k in interior)
+    inside = sum(int(i.sum()) for i, _ in interior)
+    pct = lambda v: 100.0 * v / n  # noqa: E731
+    return {"escaped": pct(n - unresolved - inside), "max_it": pct(unresolved), "interior": pct(inside),
+            "cardioid": pct(inside - period), "period": pct(period)}
 
 
 class App:
@@ -97,6 +113,8 @@ class App:
         self.cdf_key = None  # what the histogram was computed from
         self.cdf_time = 0.0
         self.frame_time = time.monotonic()
+        self.frame_ms = self.draw_ms = 0.0  # smoothed: time between frames, CPU time of a frame's update + draw
+        self.screen_stats: tuple[float, dict] | None = None  # (time, shares of the screen's pixels)
         self.ctx = None
         self.renderer = None
         self.size = (0, 0)  # framebuffer, physical pixels
@@ -105,6 +123,14 @@ class App:
         self.show_panels = True
         self.message = ""
         self.verification: verify.Verification | None = None
+        self.bookmarks = bookmarks.load()
+        self.export: export.Export | None = None
+        self.export_factor = 1
+        self.export_raw = False
+        pictures = Path.home() / "Pictures"
+        self.export_dir = str(pictures if pictures.is_dir() else Path.home())
+        self.bookmark_name = ""
+        self.bookmark_delete = ""  # the bookmark whose delete button was pressed once
         self.verify_tile: tuple[int, int, int] | None = None  # (level, tx, ty) being verified
         self.message_until = 0.0
         self.status_time = 0.0
@@ -167,6 +193,8 @@ class App:
             self.server.close()
         if self.verification:
             self.verification.cancel()
+        if self.export and not self.export.done:
+            self.export.cancel()
         self.conn = self.mgr = self.server = self.view = None
         self.store.clear()
         self.conn_error = reason
@@ -232,10 +260,12 @@ class App:
         if self.mgr.closed:
             self.disconnect(f"connection closed: {self.mgr.closed}")
             return
+        t0 = time.perf_counter()
         self.mgr.update(self.view, w, h)
         self.renderer.upload(self.store.take_uploads())
         self._update_colouring(w, h)
         self.renderer.draw(self.mgr.draw_list(self.view, w, h), w, h)
+        self.draw_ms += 0.1 * (1e3 * (time.perf_counter() - t0) - self.draw_ms)
 
         now = time.monotonic()
         if self.conn.info.features & p.FEATURE_BOARD_STATUS and now - self.status_time > 1.0:
@@ -245,6 +275,7 @@ class App:
     def _update_colouring(self, w: int, h: int):
         now = time.monotonic()
         dt, self.frame_time = now - self.frame_time, now
+        self.frame_ms += 0.1 * (1e3 * dt - self.frame_ms)
         if self.cycle:
             self.offset = (self.offset + self.cycle * dt) % 1.0
         c = self.renderer.colouring
@@ -389,6 +420,8 @@ class App:
                 self._colour_panel()
             if imgui.collapsing_header("Statistics", imgui.TreeNodeFlags_.default_open):
                 self._stats_panel()
+        if self.mgr and self.view and imgui.collapsing_header("Bookmarks"):
+            self._bookmarks_panel()
         if self.mgr and self.view and imgui.collapsing_header("Tools"):
             self._tools_panel()
         if self.cache and imgui.collapsing_header("Cache"):
@@ -628,6 +661,19 @@ class App:
             if "utilisation" in r:
                 line += f", FPGA {100 * r['utilisation']:.0f} % busy"
             imgui.text(line)
+        imgui.text(f"frame {self.frame_ms:.1f} ms ({1e3 / max(self.frame_ms, 1e-3):.0f} fps), "
+                   f"update + draw {self.draw_ms:.1f} ms CPU")
+        now = time.monotonic()
+        if self.screen_stats is None or now - self.screen_stats[0] > 0.5:
+            self.screen_stats = (now, screen_shares(m.on_screen(self.view, *self.size)))
+        sh = self.screen_stats[1]
+        if sh:
+            imgui.text(f"on screen: escaped {sh['escaped']:.1f} %, max_it {sh['max_it']:.1f} %, interior "
+                       f"{sh['interior']:.1f} % (cardioid/bulb {sh['cardioid']:.1f}, period {sh['period']:.1f})")
+            if imgui.is_item_hovered():
+                imgui.set_tooltip("of the screen's pixels at the current level and settings\n"
+                                  "max_it: not resolved (raise max_it, or turn on the periodicity check)\n"
+                                  "interior: proven by the cardioid/bulb test or the periodicity check")
         if m.board:
             b = m.board
             imgui.text(f"board: FPGA {b.fpga_temp} C, board {b.board_temp} C, fan {b.fan_rpm} RPM"
@@ -679,6 +725,81 @@ class App:
         if c.last_error:
             imgui.text_colored(imgui.ImVec4(1, 0.5, 0.4, 1), c.last_error)
 
+    # ------------------------------------------------------------------------------- bookmarks
+
+    def colouring_state(self) -> dict:
+        return {"mode": self.mode, "palette": self.palette, "density_log": self.density_log.get(self.mode, 0.0),
+                "offset": round(self.offset, 4), "gamma": round(self.gamma, 3),
+                "interior": [round(v, 4) for v in self.interior], "unresolved": [round(v, 4) for v in self.unresolved]}
+
+    def apply_colouring(self, d: dict):
+        if d.get("mode") in MODES:
+            self.mode, self.cdf_key = d["mode"], None
+            if "density_log" in d:
+                self.density_log[self.mode] = float(d["density_log"])
+        if d.get("palette") in self.palettes():
+            self._set_palette(d["palette"])
+        self.offset = float(d.get("offset", self.offset))
+        self.gamma = float(d.get("gamma", self.gamma))
+        self.interior = [float(v) for v in d.get("interior", self.interior)]
+        self.unresolved = [float(v) for v in d.get("unresolved", self.unresolved)]
+        self.cycle = 0.0
+
+    def _bookmarks_panel(self):
+        info = self.conn.info
+        imgui.set_next_item_width(imgui.get_font_size() * 14)
+        entered, self.bookmark_name = imgui.input_text_with_hint("##name", "name", self.bookmark_name,
+                                                                 imgui.InputTextFlags_.enter_returns_true)
+        imgui.same_line()
+        name = self.bookmark_name.strip()
+        imgui.begin_disabled(not name)
+        if (imgui.button("Replace" if name in self.bookmarks else "Save") or entered) and name:
+            self.bookmarks[name] = bookmarks.Bookmark.of(
+                self.view, info.f, *self.size, self.max_it, self.mgr.flags & p.RESULT_FLAGS, self.colouring_state(),
+                f"W={info.w} F={info.f} id {info.arith_id:#010x}")
+            self._save_bookmarks()
+            self.bookmark_name = ""
+        imgui.end_disabled()
+        for n, b in list(self.bookmarks.items()):
+            imgui.push_id(n)
+            if imgui.small_button("Go"):
+                self._go_bookmark(b)
+            imgui.same_line()
+            sure = self.bookmark_delete == n
+            if imgui.small_button("sure?" if sure else "x"):
+                if sure:
+                    del self.bookmarks[n]
+                    self._save_bookmarks()
+                self.bookmark_delete = "" if sure else n
+            imgui.same_line()
+            imgui.text(n)
+            if imgui.is_item_hovered():
+                pixel = float(Fraction(b.pixel))
+                imgui.set_tooltip(f"centre {float(Fraction(b.re)):.17g} {float(Fraction(b.im)):+.17g}i\n"
+                                  f"pixel {pixel:.3g}, max_it {b.max_it}, flags {b.flags}, "
+                                  f"{b.colouring.get('mode', '?')} / {b.colouring.get('palette', '?')}\n"
+                                  f"saved {b.saved} on {b.server}")
+            imgui.pop_id()
+        if not self.bookmarks:
+            imgui.text_disabled("none yet")
+
+    def _save_bookmarks(self):
+        try:
+            bookmarks.save(self.bookmarks)
+        except OSError as e:
+            self.say(f"bookmarks not saved: {e}")
+
+    def _go_bookmark(self, b: bookmarks.Bookmark):
+        info, m = self.conn.info, self.mgr
+        self.set_view(b.view(info.f, m.lo, m.hi, *self.size))
+        m.set_render(b.max_it, b.flags)
+        self.max_it = m.max_it
+        self.apply_colouring(b.colouring)
+        if not b.exact_on(info.f, m.lo, m.hi):
+            self.say("this server has another number format: the nearest zoom level is shown")
+        elif b.flags & ~m.flags:
+            self.say("this server doesn't have every check the bookmark used")
+
     # ------------------------------------------------------------------------------- tools
 
     def _tools_panel(self):
@@ -709,6 +830,51 @@ class App:
             imgui.text_colored(colour, v.result or f"{v.label}: {v.error}")
             for m in v.mismatches:
                 imgui.text(f"  ({m.x}, {m.y}): board {verify.describe(m.got)}, model {verify.describe(m.want)}")
+        self._export_panel()
+
+    def _export_panel(self):
+        imgui.separator()
+        ex = self.export
+        busy = ex is not None and not ex.done
+        w, h = self.size
+        imgui.begin_disabled(busy)
+        for k, deeper in export.FACTORS.items():
+            imgui.begin_disabled(self.view.level + deeper > self.mgr.hi)
+            if imgui.radio_button(f"{k}x##export", self.export_factor == k):
+                self.export_factor = k
+            imgui.end_disabled()
+            if imgui.is_item_hovered(imgui.HoveredFlags_.allow_when_disabled):
+                imgui.set_tooltip(f"{w * k}x{h * k} pixels" + ("" if self.view.level + deeper <= self.mgr.hi
+                                                                  else ": deeper than the number format"))
+            imgui.same_line()
+        _, self.export_raw = imgui.checkbox("raw planes (.npy)", self.export_raw)
+        imgui.set_next_item_width(imgui.get_font_size() * 18)
+        _, self.export_dir = imgui.input_text("folder", self.export_dir)
+        if imgui.button("Export PNG"):
+            self._start_export()
+        imgui.end_disabled()
+        if busy:
+            imgui.same_line()
+            if imgui.button("Cancel##export"):
+                ex.cancel()
+        if ex is not None:
+            good = ex.finished
+            colour = imgui.ImVec4(0.5, 1, 0.5, 1) if good else imgui.ImVec4(1, 1, 1, 1) if busy \
+                else imgui.ImVec4(1, 0.5, 0.4, 1)
+            imgui.text_colored(colour, ex.status())
+
+    def _start_export(self):
+        w, h = self.size
+        folder = Path(self.export_dir).expanduser()
+        if not folder.is_dir():
+            self.say(f"no such folder: {folder}")
+            return
+        path = folder / time.strftime(f"mandelbrot-%Y%m%d-%H%M%S-{w * self.export_factor}x{h * self.export_factor}.png")
+        try:
+            self.export = export.Export(self.mgr, self.view, w, h, self.export_factor, self.renderer.colouring,
+                                        bake(self.palettes()[self.palette]), path, raw=self.export_raw)
+        except (OSError, ValueError) as e:
+            self.say(f"export: {e}")
 
     def _start_verify(self):
         info, view, (w, h) = self.conn.info, self.view, self.size

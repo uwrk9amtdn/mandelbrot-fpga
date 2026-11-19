@@ -405,10 +405,14 @@ level above and below around the cursor.
      replaces a file computed at a higher max_it; reuse at a lower max_it uses the proof iteration k
      of proven-interior pixels (decided with the user 2026-11-19, see "Reuse at another max_it").
 6. **Tools:** statistics, bookmarks, export, high-resolution render, the exact mode and "verify
-   tile" (both sides computed, bypassing the cache). Done so far (2026-11-19): the exact mode
+   tile" (both sides computed, bypassing the cache). **Done** (2026-11-19): the exact mode
    (`SimServer(exact=True)`, the fixed.py model on a process pool, reporting the FPGA's arithmetic
-   id) and verify tile (Tools panel, `verify.py`; a side request through the tile manager, never
-   stored or cached). Board check: a 256x256 tile in 2 s, identical.
+   id); verify tile (Tools panel, `verify.py`; a side request through the tile manager, never
+   stored or cached; a 256x256 board tile in 2 s, identical); statistics (frame time, on-screen
+   shares of escaped / max_it / interior by proof); bookmarks (`bookmarks.py`, exact centre and
+   pixel size as fractions); export (`export.py`: 1x-8x, the high-resolution render is the same
+   view 4/8/12 levels deeper, coloured on the CPU with `colouring.reference` band by band into a
+   streamed PNG; raw planes as .npy). The screen PNG is the 1x export, not a framebuffer read.
 7. **Phase 3 features:** Mariani-Silver in `tiles.py`, the hardware flags in the UI (done early,
    2026-11-19: two checkboxes in the View panel, on when INFO reports them; `--no-checks`).
 

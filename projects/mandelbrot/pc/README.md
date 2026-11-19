@@ -45,11 +45,17 @@ Options:
     and of unresolved (max_it reached) pixels. Smooth values need the wide formats' R² = 256; at
     R² = 4 (the 21-bit design) they show bands. Saved palettes are in
     `~/.config/mandelbrot-fpga/palettes.json`.
-  - Statistics: tile rates, and the board's temperatures and fan speed.
+  - Statistics: tile rates, frame time, the shares of escaped, max_it and interior pixels on screen
+    (and which check proved the interior ones), and the board's temperatures and fan speed.
+  - Bookmarks: named views (exact centre and pixel size, max_it, checks, colouring) in
+    `~/.config/mandelbrot-fpga/bookmarks.json`; Go, delete (press x twice).
   - Tools: Verify tile: the tile at the centre of the screen from the server (not the cache) and from
     the bit-exact model (`fixed.py`, on all cores but one), compared bit for bit; the tile is outlined,
     green or red, with the first wrong pixels circled. Only for servers whose arithmetic id is the
     wide FPGA's (the board, `--sim-format exact`).
+    Export PNG: the view at 1x, 2x, 4x or 8x the window's size (the same view, 4, 8 or 12 levels
+    deeper), coloured on the CPU like the shader, written band by band; optionally the raw planes as
+    `.npy` (counts, and |z|^2 or the proof iteration k). New tiles also go to the disk cache.
   - Cache: size, hits and misses; bypass (request every tile, still write the cache); offline / cache
     only; clear everything or the current arithmetic id. Tiles are only shown as results of the
     build (arithmetic id) that computed them.
@@ -64,7 +70,7 @@ MANDELBROT_BOARD=192.168.10.10 uv run pytest -q tests/test_board.py  # against m
 
 Modules in `mandelbrot/`: `protocol.py` (wire format), `net.py` (client, `OfflineConnection`),
 `sim_server.py`, `view.py` (lattice maths), `tiles.py` (tile manager, in-memory LRU), `cache.py`
-(disk cache), `verify.py` (verify tile, the exact model on a process pool), `colouring.py`, `gl_view.py` (textures, shader), `app.py` (viewer), `headless.py`
+(disk cache), `verify.py` (verify tile, the exact model on a process pool), `bookmarks.py`, `export.py` (PNG and .npy), `colouring.py`, `gl_view.py` (textures, shader), `app.py` (viewer), `headless.py`
 (render to PNG from the shell).
 
 Other directories: `tools/precision_study.py` (the phase 2 error study), `tools/bench_views.py` (phase 3

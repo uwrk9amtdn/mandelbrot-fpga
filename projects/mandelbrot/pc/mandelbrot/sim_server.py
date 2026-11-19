@@ -2,9 +2,12 @@
 
   python -m mandelbrot.sim_server                       # W = 64, F = 54, R = 16 on port 5150
   python -m mandelbrot.sim_server --w 21 --f 16 --r2 4  # the format of the phase 1 hardware
+  python -m mandelbrot.sim_server --exact               # bit-exact, W = 64 (slow)
 
-Fast mode only for now: numpy float64, which is not the FPGA's arithmetic (its arithmetic id says
-so). The bit-exact mode comes with milestone 6 of PC_APP_PLAN.md.
+Fast mode: numpy float64, which is not the FPGA's arithmetic (its arithmetic id says so). Exact mode
+(--exact, wide formats only): the bit-exact model of fixed.py, with the periodicity check and the
+cardioid test, on a process pool (verify.py); it reports the arithmetic id of the matching FPGA
+bitstream, so its tiles are the board's, bit for bit, and "verify tile" can be tested without it.
 """
 
 import argparse
@@ -75,13 +78,21 @@ def compute_tile(req: p.TileReq, f_bits: int, bailout_r2: int, cancel: threading
 
 class SimServer:
     def __init__(self, host="127.0.0.1", port=p.PORT, w=64, f=54, bailout_r2=256, n_cores=60,
-                 clock_khz=198_000, max_in_flight=8, workers=4, tile_delay=0.0):
+                 clock_khz=198_000, max_in_flight=8, workers=4, tile_delay=0.0, exact=False):
         """`tile_delay` adds seconds to every tile, to test cancelling and flow control."""
+        features = p.FLAG_CARDIOID | p.FLAG_LZ4 | p.FEATURE_BOARD_STATUS
+        ident = arith_id("sim-fast-float64", w, f, bailout_r2)
+        if exact:
+            from .verify import I_BITS, R2, model_arith_id
+            if f != w - I_BITS or bailout_r2 != R2:
+                raise ValueError(f"exact mode needs the wide format: F = W - {I_BITS}, R^2 = {R2}")
+            features |= p.FLAG_PERIODICITY
+            ident = model_arith_id(w)
+        self.exact = exact
         self.info = p.Info(
             version=p.VERSION, w=w, f=f, n_cores=n_cores, clock_khz=clock_khz,
             max_tile_width=256, max_tile_height=256, max_in_flight=max_in_flight,
-            features=p.FLAG_CARDIOID | p.FLAG_LZ4 | p.FEATURE_BOARD_STATUS, max_max_it=p.MAX_MAX_IT,
-            bailout_r2=bailout_r2, arith_id=arith_id("sim-fast-float64", w, f, bailout_r2))
+            features=features, max_max_it=p.MAX_MAX_IT, bailout_r2=bailout_r2, arith_id=ident)
         self.tile_delay = tile_delay
         self._pool = ThreadPoolExecutor(workers, thread_name_prefix="sim-tile")
         self._listener = socket.create_server((host, port))
@@ -252,7 +263,12 @@ class _Session:
             self._started.add(req.request_id)
         delay = self.server.tile_delay
         cancelled = cancel.wait(delay) if delay else cancel.is_set()
-        result = None if cancelled else compute_tile(req, info.f, info.bailout_r2, cancel)
+        if cancelled:
+            result = None
+        elif self.server.exact:
+            result = compute_exact_tile(req, info.w, cancel)
+        else:
+            result = compute_tile(req, info.f, info.bailout_r2, cancel)
         # Free the slot before answering: the client may send its next request right away.
         with self._lock:
             del self._pending[req.request_id]
@@ -267,6 +283,25 @@ class _Session:
                              raw_size, iterations, total_it, total_cycles, data).encode())
 
 
+def compute_exact_tile(req: p.TileReq, w: int, cancel: threading.Event | None = None):
+    """Exact mode: (counts u32, second plane as f32, iterations), or None if cancelled."""
+    from .fixed import wrap
+    from .verify import model_row, pool
+
+    rows = [pool().submit(model_row, w, req.x0, wrap(req.y0 - j * req.step, w), req.step, req.width,
+                          req.max_it, req.flags & p.RESULT_FLAGS) for j in range(req.height)]
+    while not all(r.done() for r in rows):
+        if cancel is not None and cancel.wait(0.02):
+            for r in rows:
+                r.cancel()
+            return None
+    records = np.stack([r.result() for r in rows])
+    counts = (records & np.uint64(0xFFFFFFFF)).astype(np.uint32)
+    hi = (records >> np.uint64(32)).astype(np.uint32)
+    it = np.where(counts == p.UNRESOLVED, req.max_it, np.where(counts == p.INTERIOR, hi, counts))
+    return counts, hi.view(np.float32), int(it.sum(dtype=np.int64))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default="127.0.0.1", help="address to listen on (0.0.0.0 for all)")
@@ -278,9 +313,10 @@ def main():
     ap.add_argument("--in-flight", type=int, default=8, help="max requests in flight")
     ap.add_argument("--workers", type=int, default=4, help="tiles computed at the same time")
     ap.add_argument("--delay", type=float, default=0.0, help="seconds added to every tile")
+    ap.add_argument("--exact", action="store_true", help="the bit-exact model (wide formats; slow)")
     a = ap.parse_args()
     server = SimServer(a.host, a.port, a.w, a.f, a.r2, a.cores, max_in_flight=a.in_flight,
-                       workers=a.workers, tile_delay=a.delay)
+                       workers=a.workers, tile_delay=a.delay, exact=a.exact)
     print(f"simulated server on {a.host}:{server.port}  W={a.w} F={a.f} R^2={a.r2} "
           f"arithmetic id {server.info.arith_id:#010x}")
     try:

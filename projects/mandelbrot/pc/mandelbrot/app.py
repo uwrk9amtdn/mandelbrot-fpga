@@ -32,12 +32,14 @@ from .headless import write_png
 from .cache import DiskCache
 from .net import Connection, OfflineConnection
 from .tiles import TileManager, TileStore
-from .view import TILE, View, step
+from .view import TILE, View, step, tile_origin
+from . import verify
 
 CHECKS = p.FLAG_PERIODICITY | p.FLAG_CARDIOID  # the hardware checks, requested when the server has them
-SIM_FORMATS = {  # name -> (W, F, R^2)
-    "wide": (64, 54, 256),  # the phase 2 format, smooth colouring works
-    "board": (21, 16, 4),  # the phase 1 hardware
+SIM_FORMATS = {  # name -> (W, F, R^2, exact)
+    "wide": (64, 54, 256, False),  # the phase 2 format, smooth colouring works
+    "board": (21, 16, 4, False),  # the phase 1 hardware
+    "exact": (64, 54, 256, True),  # the W = 64 bitstream's arithmetic, bit for bit (slow)
 }
 HELP = """mouse wheel     zoom at the cursor
 left drag       pan
@@ -102,6 +104,8 @@ class App:
         self.box_start = None
         self.show_panels = True
         self.message = ""
+        self.verification: verify.Verification | None = None
+        self.verify_tile: tuple[int, int, int] | None = None  # (level, tx, ty) being verified
         self.message_until = 0.0
         self.status_time = 0.0
         self.centre_text = ["", ""]
@@ -126,8 +130,8 @@ class App:
             if self.source == "sim":
                 from .sim_server import SimServer
 
-                w, f, r2 = SIM_FORMATS[self.sim_format]
-                server = SimServer(port=0, w=w, f=f, bailout_r2=r2).start()
+                w, f, r2, exact = SIM_FORMATS[self.sim_format]
+                server = SimServer(port=0, w=w, f=f, bailout_r2=r2, exact=exact).start()
                 host, port = "127.0.0.1", server.port
             else:
                 host, port = self.host, self.port
@@ -161,6 +165,8 @@ class App:
             self.conn.close()
         if self.server:
             self.server.close()
+        if self.verification:
+            self.verification.cancel()
         self.conn = self.mgr = self.server = self.view = None
         self.store.clear()
         self.conn_error = reason
@@ -273,6 +279,7 @@ class App:
             self._keys()
         if self.mgr and self.view:
             self._hatch_missing()
+            self._outline_verify()
         if self.show_panels:
             self._panels()
         if self.message and time.monotonic() < self.message_until:
@@ -382,6 +389,8 @@ class App:
                 self._colour_panel()
             if imgui.collapsing_header("Statistics", imgui.TreeNodeFlags_.default_open):
                 self._stats_panel()
+        if self.mgr and self.view and imgui.collapsing_header("Tools"):
+            self._tools_panel()
         if self.cache and imgui.collapsing_header("Cache"):
             self._cache_panel()
         if imgui.collapsing_header("Help"):
@@ -421,7 +430,8 @@ class App:
         elif self.source == "sim":
             names = list(SIM_FORMATS)
             _, i = imgui.combo("format", names.index(self.sim_format), [
-                f"{n}: W={w} F={f} R^2={r}" for n, (w, f, r) in SIM_FORMATS.items()])
+                f"{n}: W={w} F={f} R^2={r}" + (", bit-exact (slow)" if exact else ", float64")
+                for n, (w, f, r, exact) in SIM_FORMATS.items()])
             self.sim_format = names[i]
         else:
             _, self.host = imgui.input_text("host", self.host)
@@ -669,8 +679,83 @@ class App:
         if c.last_error:
             imgui.text_colored(imgui.ImVec4(1, 0.5, 0.4, 1), c.last_error)
 
+    # ------------------------------------------------------------------------------- tools
+
+    def _tools_panel(self):
+        info, v = self.conn.info, self.verification
+        busy = v is not None and not v.done
+        ok = verify.model_applies(info) and not self.mgr.offline
+        imgui.begin_disabled(busy or not ok)
+        if imgui.button("Verify tile"):
+            self._start_verify()
+        imgui.end_disabled()
+        if imgui.is_item_hovered(imgui.HoveredFlags_.allow_when_disabled):
+            imgui.set_tooltip(
+                "the tile at the centre of the screen, from the server (not the cache) and from the\n"
+                "bit-exact model (fixed.py, on all cores), compared bit for bit" if ok else
+                "offline: no server" if self.mgr.offline else
+                f"the model is the wide FPGA arithmetic (W = {info.w}: id "
+                f"{verify.model_arith_id(info.w):#010x}); this server's id is {info.arith_id:#010x}")
+        if busy:
+            imgui.same_line()
+            if imgui.button("Cancel"):
+                v.cancel()
+            board = "received" if v.board is not None else "waiting"
+            imgui.text(f"{v.label}: model {v.rows_done}/{v.height} rows, board {board}, "
+                       f"{time.monotonic() - v.started:.0f} s")
+        elif v is not None:
+            good = v.result is not None and v.n_wrong == 0
+            colour = imgui.ImVec4(0.5, 1, 0.5, 1) if good else imgui.ImVec4(1, 0.5, 0.4, 1)
+            imgui.text_colored(colour, v.result or f"{v.label}: {v.error}")
+            for m in v.mismatches:
+                imgui.text(f"  ({m.x}, {m.y}): board {verify.describe(m.got)}, model {verify.describe(m.want)}")
+
+    def _start_verify(self):
+        info, view, (w, h) = self.conn.info, self.view, self.size
+        tx, ty = (view.x0 + w // 2) // TILE, (view.y0 + h // 2) // TILE
+        x0, y0, s = tile_origin(info.f, view.level, tx, ty)
+        max_it, flags = self.mgr.max_it, self.mgr.flags & p.RESULT_FLAGS
+        if not p.TileReq(1, TILE, TILE, max_it, flags, x0, y0, s).fits(info.w):
+            self.say("that tile is outside the number format (filled in on the PC, nothing to verify)")
+            return
+        v = verify.Verification(info, f"tile ({tx}, {ty}) at level {view.level}, max_it {max_it}"
+                                + (f", flags {flags}" if flags else ""), x0, y0, s, max_it, flags)
+        v.start_model(verify.pool())
+
+        def answer(r):
+            if r is None:
+                v.on_tile(None, None, "the connection closed")
+            elif hasattr(r, "code"):  # ErrorResult
+                v.on_tile(None, None, f"server error {r.code}: {r.text}")
+            else:
+                v.on_tile(r.counts, r.zz)
+        self.mgr.request_side(x0, y0, s, max_it, flags, answer)
+        self.verification, self.verify_tile = v, (view.level, tx, ty)
+
+    def _outline_verify(self):
+        """The tile being verified (or just verified), outlined on screen."""
+        v = self.verification
+        if v is None or self.verify_tile is None:
+            return
+        v.update()
+        level, tx, ty = self.verify_tile
+        if level != self.view.level:
+            return
+        io = imgui.get_io()
+        sx, sy = io.display_framebuffer_scale.x, io.display_framebuffer_scale.y
+        left, top = TILE * tx - self.view.x0, TILE * ty - self.view.y0
+        colour = (imgui.ImVec4(1, 1, 0.4, 0.9) if not v.done else imgui.ImVec4(0.4, 1, 0.4, 0.9)
+                  if v.result and v.n_wrong == 0 else imgui.ImVec4(1, 0.4, 0.3, 0.9))
+        dl = imgui.get_background_draw_list()
+        dl.add_rect(imgui.ImVec2(left / sx, top / sy), imgui.ImVec2((left + TILE) / sx, (top + TILE) / sy),
+                    imgui.get_color_u32(colour), thickness=2.0)
+        for m in v.mismatches:  # the first wrong pixels
+            x, y = (left + m.x) / sx, (top + m.y) / sy
+            dl.add_circle(imgui.ImVec2(x, y), 6.0, imgui.get_color_u32(imgui.ImVec4(1, 0.2, 0.2, 1)), thickness=2.0)
+
     def shutdown(self):
         self.disconnect()
+        verify.shutdown()
         if self.cache:
             self.cache.close()  # finishes the queued writes
         if self.renderer:

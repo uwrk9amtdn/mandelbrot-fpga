@@ -19,7 +19,7 @@ Options:
 | Option | Default | Meaning |
 |---|---|---|
 | `--host`, `--port` | none, 5150 | server to connect to at start |
-| `--sim`, `--sim-format` | `wide` | simulated server; `wide` is W=64/F=54, `board` is the phase 1 W=21/F=16 |
+| `--sim`, `--sim-format` | `wide` | simulated server; `wide` is W=64/F=54, `board` is the phase 1 W=21/F=16 (both float64), `exact` the W=64 bitstream's arithmetic bit for bit (slow; `python -m mandelbrot.sim_server --exact` standalone) |
 | `--re`, `--im`, `--level` | -0.75, 0, whole set | starting view |
 | `--max-it` | 256 | iteration limit |
 | `--no-checks` | | don't request the periodicity check and cardioid test (requested by default when the server has them) |
@@ -46,6 +46,10 @@ Options:
     R² = 4 (the 21-bit design) they show bands. Saved palettes are in
     `~/.config/mandelbrot-fpga/palettes.json`.
   - Statistics: tile rates, and the board's temperatures and fan speed.
+  - Tools: Verify tile: the tile at the centre of the screen from the server (not the cache) and from
+    the bit-exact model (`fixed.py`, on all cores but one), compared bit for bit; the tile is outlined,
+    green or red, with the first wrong pixels circled. Only for servers whose arithmetic id is the
+    wide FPGA's (the board, `--sim-format exact`).
   - Cache: size, hits and misses; bypass (request every tile, still write the cache); offline / cache
     only; clear everything or the current arithmetic id. Tiles are only shown as results of the
     build (arithmetic id) that computed them.
@@ -60,8 +64,9 @@ MANDELBROT_BOARD=192.168.10.10 uv run pytest -q tests/test_board.py  # against m
 
 Modules in `mandelbrot/`: `protocol.py` (wire format), `net.py` (client, `OfflineConnection`),
 `sim_server.py`, `view.py` (lattice maths), `tiles.py` (tile manager, in-memory LRU), `cache.py`
-(disk cache), `colouring.py`, `gl_view.py` (textures, shader), `app.py` (viewer), `headless.py`
+(disk cache), `verify.py` (verify tile, the exact model on a process pool), `colouring.py`, `gl_view.py` (textures, shader), `app.py` (viewer), `headless.py`
 (render to PNG from the shell).
 
-Other directories: `tools/precision_study.py` (the phase 2 error study) and `bench/` (a C++
+Other directories: `tools/precision_study.py` (the phase 2 error study), `tools/bench_views.py` (phase 3
+benchmark views; runs on the board too) and `bench/` (a C++
 reference benchmark).

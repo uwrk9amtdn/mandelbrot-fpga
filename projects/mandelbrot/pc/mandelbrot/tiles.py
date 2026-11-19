@@ -170,6 +170,8 @@ class TileManager:
         self.cancelled: set[int] = set()  # cancelled, result not back yet
         self.failed: set[TileKey] = set()  # the server refused them; not asked again
         self.loading: set[TileKey] = set()  # looked up in the disk cache, answer not back yet
+        self.side: dict[int, object] = {}  # request id -> callback(result) of side requests (verify tile)
+        self.side_queue: list[tuple[tuple, object]] = []  # side requests waiting for a free slot
         self.missed: set[TileKey] = set()  # not in the disk cache: request them (or hatch them offline)
         self.refetch = False  # set by `refresh`: the next update requests the visible tiles directly
         self.stats = Stats()
@@ -242,6 +244,9 @@ class TileManager:
             self.loading.difference_update(unwanted)
         if len(self.missed) > 20000:
             self.missed.intersection_update(wanted_set)
+        while self.side_queue and self.conn.free_slots > 0:
+            args, callback = self.side_queue.pop(0)
+            self.side[self.conn.request(*args)] = callback
         if self.paused:
             return
 
@@ -266,6 +271,16 @@ class TileManager:
             self.requested[key] = rid
             self.stats.requested += 1
 
+    def request_side(self, x0: int, y0: int, s: int, max_it: int, flags: int, callback,
+                     width: int = TILE, height: int = TILE):
+        """A request outside the tile store and the cache, sent by update() ahead of the screen's
+        tiles (even when stopped): its TileResult or ErrorResult goes to callback, or None if the
+        connection closes first."""
+        if self.offline:
+            callback(None)
+            return
+        self.side_queue.append(((x0, y0, s, max_it, width, height, flags), callback))
+
     def _previews(self, view: View, width: int, height: int) -> list[TileKey]:
         level = view.level - PREVIEW_LEVELS
         if level < self.lo:
@@ -283,6 +298,9 @@ class TileManager:
                 r = self.conn.results.get_nowait()
             except Exception:
                 return
+            if isinstance(r, (TileResult, ErrorResult)) and r.request_id in self.side:
+                self.side.pop(r.request_id)(r)
+                continue
             if isinstance(r, TileResult):
                 key = self.pending.pop(r.request_id, None)
                 self.cancelled.discard(r.request_id)
@@ -314,6 +332,10 @@ class TileManager:
                 self.board = r
             elif isinstance(r, Closed):
                 self.closed = r.reason
+                for callback in [*self.side.values(), *(cb for _, cb in self.side_queue)]:
+                    callback(None)
+                self.side.clear()
+                self.side_queue.clear()
                 return
 
     def _receive_cache(self):

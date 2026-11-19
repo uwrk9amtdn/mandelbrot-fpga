@@ -555,6 +555,11 @@ next pass. `accel_test.py check` and `tests/test_board.py` (three periodicity ti
 
 ### Phase 4: perturbation, beyond 128 bits and much faster at depth
 
+**Design study (2026-11-19): `PHASE4_STUDY.md`.** Estimates below are refined there; its main result is
+that an FPGA perturbation core at double-like precision (about 13 cores, 2.4-3.2 G it/s) would be
+slower than the PC's CPU doing perturbation in rescaled double. **Decision open** (the user chooses
+later, 2026-11-19): run experiments E1-E3, build a 54-bit core, perturbation on the PC, or park it.
+
 - **Reference orbit:** Z_n computed with MPFR on the HPS, at any precision, then rounded to the
   low-precision format.
 - **FPGA iterates only the difference, rewritten as one complex multiply:**
